@@ -1,0 +1,39 @@
+#
+# hex_weekend
+#
+---
+imports:
+  sokol:
+    git: https://github.com/floooh/sokol
+  sokol-tools-bin:
+    git: https://github.com/floooh/sokol-tools-bin
+  fips-cimgui:
+    git: https://github.com/fips-libs/fips-cimgui.git
+  fips-imgui:
+    git: https://github.com/fips-libs/fips-imgui.git
+  fips-utils:
+    git: https://github.com/fips-libs/fips-utils
+  fips-dawn:
+    git: https://github.com/fips-libs/fips-dawn
+#   imports:
+#       PROJ-NAME:
+#           git: GIT-URL
+#           branch: OPTIONAL BRANCH OR TAG NAME
+#   exports:
+#       header-dirs:
+#           - RELATIVE HEADER SEARCH PATH
+#           - ...
+#       lib-dirs:
+#           - RELATIVE LIB SEARCH PATH
+#           - ...
+#       defines:
+#           KEY: VALUE (C preprocessor defines)
+#           ...: ...
+#       modules:
+#           NAME:   DIRECTORY WITH CMakeLists.txt of MODULE
+#           ...: ...
+#   run:
+#       TARGET-NAME:
+#           cwd:    WORKING DIRECTORY FOR 'fips run target'
+#       ...
+

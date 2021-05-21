@@ -1,0 +1,12 @@
+fips_begin_lib(wgpu_entry)
+    fips_files(wgpu_entry.c wgpu_entry.h)
+    if (FIPS_EMSCRIPTEN)
+        fips_files(wgpu_entry_wasm.c)
+    endif()
+fips_end_lib()
+
+fips_begin_app(hex_weekend windowed)
+    fips_files(triangle-wgpu.c)
+    sokol_shader(triangle-wgpu.glsl wgpu)
+    fips_deps(wgpu_entry)
+fips_end_app()

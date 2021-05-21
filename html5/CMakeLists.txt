@@ -1,0 +1,5 @@
+fips_begin_app(hex_weekend windowed)
+    fips_files(main.c)
+    sokol_shader(shaders.glsl glsl300es:glsl100)
+    #fips_deps(wgpu_entry)
+fips_end_app()
