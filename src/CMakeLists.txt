@@ -1,7 +1,9 @@
 add_definitions(-D${sokol_backend})
 
 fips_begin_app(hex_weekend windowed)
+    fips_vs_warning_level(3)
     fips_files(main.c)
     sokol_shader(shaders.glsl ${slang})
-    #fips_deps(sokol HandmadeMath cdbgui)
+    fips_deps(sokol-memtrack HandmadeMath cdbgui stb)
 fips_end_app()
+target_compile_definitions(hex_weekend PRIVATE USE_DBG_UI)
