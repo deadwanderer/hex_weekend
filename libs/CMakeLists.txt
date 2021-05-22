@@ -1,0 +1,4 @@
+add_definitions(-D${sokol_backend})
+add_subdirectory(HandmadeMath)
+add_subdirectory(sokol)
+add_subdirectory(cdbgui)
