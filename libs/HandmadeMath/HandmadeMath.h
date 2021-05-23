@@ -123,8 +123,8 @@
   #if defined(_M_AMD64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 1)
     #define HANDMADE_MATH__USE_SSE 1
   #endif
-#else /* not MSVC, probably GCC, clang, icc or something that doesn't support \
-         SSE anyway */
+#else /* not MSVC, probably GCC, clang, icc or something that doesn't \
+         support SSE anyway */
   #ifdef __SSE__ /* they #define __SSE__ if it's supported */
     #define HANDMADE_MATH__USE_SSE 1
   #endif /*  __SSE__ */
@@ -986,10 +986,10 @@ HMM_INLINE float HMM_PREFIX(DotVec4)(hmm_vec4 VecOne, hmm_vec4 VecTwo) {
 
   float Result;
 
-  // NOTE(zak): IN the future if we wanna check what version SSE is support
-  // we can use _mm_dp_ps (4.3) but for now we will use the old way.
-  // Or a r = _mm_mul_ps(v1, v2), r = _mm_hadd_ps(r, r), r = _mm_hadd_ps(r, r)
-  // for SSE3
+// NOTE(zak): IN the future if we wanna check what version SSE is support
+// we can use _mm_dp_ps (4.3) but for now we will use the old way.
+// Or a r = _mm_mul_ps(v1, v2), r = _mm_hadd_ps(r, r), r = _mm_hadd_ps(r, r)
+// for SSE3
 #ifdef HANDMADE_MATH__USE_SSE
   __m128 SSEResultOne =
       _mm_mul_ps(VecOne.InternalElementsSSE, VecTwo.InternalElementsSSE);

@@ -4,6 +4,7 @@
 #include "HandmadeMath/HandmadeMath.h"
 #include "sokol_gfx.h"
 #include "shaders.glsl.h"
+#include <stdlib.h>
 
 /*  ====  METRICS  ==== */
 typedef struct _Metrics {
