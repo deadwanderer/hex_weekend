@@ -83,11 +83,13 @@ static struct {
   sg_bindings skybox_bind;
   sg_pass_action pass_action;
   _cubemap_request_t cubemap_req;
+  uint8_t texture_buffer[1024 * 1024];
   uint8_t cubemap_buffer[6 * 1024 * 1024];
   camera_t cam;
   hmm_vec2 last_mouse;
   bool first_mouse;
   bool show_debug_ui;
+  bool show_mem_ui;
   uint64_t lastFrameTime;
 } state;
 
@@ -265,6 +267,7 @@ void init(void) {
       &(sfetch_desc_t){.max_requests = 8, .num_channels = 2, .num_lanes = 4});
   stm_setup();
   state.show_debug_ui = false;
+  state.show_mem_ui = false;
   state.lastFrameTime = stm_now();
   state.pass_action =
       (sg_pass_action){.colors[0] = {.action = SG_ACTION_CLEAR,
@@ -275,29 +278,42 @@ void init(void) {
   __cdbgui_setup(sapp_sample_count());
 
   float vertices[] = {
-      -1.0, -1.0, -1.0, 1.0,  0.0,  0.0,  1.0,  1.0,  -1.0, -1.0,
-      1.0,  0.0,  0.0,  1.0,  1.0,  1.0,  -1.0, 1.0,  0.0,  0.0,
-      1.0,  -1.0, 1.0,  -1.0, 1.0,  0.0,  0.0,  1.0,
+      // back
+      -1.0, -1.0, -1.0, 1.0f, 1.0f,  // 1.0,  0.0,  0.0,  1.0,
+      1.0, -1.0, -1.0, 0.0f, 1.0f,   // 1.0,  0.0,  0.0,  1.0,
+      1.0, 1.0, -1.0, 0.0f, 0.0f,    // 1.0,  0.0,  0.0, 1.0,
+      -1.0, 1.0, -1.0, 1.0f, 0.0f,   // 1.0,  0.0,  0.0,  1.0,
 
-      -1.0, -1.0, 1.0,  0.0,  1.0,  0.0,  1.0,  1.0,  -1.0, 1.0,
-      0.0,  1.0,  0.0,  1.0,  1.0,  1.0,  1.0,  0.0,  1.0,  0.0,
-      1.0,  -1.0, 1.0,  1.0,  0.0,  1.0,  0.0,  1.0,
+      // front
+      -1.0, -1.0, 1.0, 0.0f, 1.0f,  // 0.0,  1.0,  0.0,  1.0,
+      1.0, -1.0, 1.0, 1.0f, 1.0f,   // 0.0,  1.0,  0.0,  1.0,
+      1.0, 1.0, 1.0, 1.0f, 0.0f,    // 0.0,  1.0,  0.0, 1.0,
+      -1.0, 1.0, 1.0, 0.0f, 0.0f,   // 0.0,  1.0,  0.0,  1.0,
 
-      -1.0, -1.0, -1.0, 0.0,  0.0,  1.0,  1.0,  -1.0, 1.0,  -1.0,
-      0.0,  0.0,  1.0,  1.0,  -1.0, 1.0,  1.0,  0.0,  0.0,  1.0,
-      1.0,  -1.0, -1.0, 1.0,  0.0,  0.0,  1.0,  1.0,
+      // left
+      -1.0, -1.0, -1.0, 1.0f, 1.0f,  // 0.0,  0.0,  1.0,  1.0,
+      -1.0, 1.0, -1.0, 0.0f, 0.0f,   // 0.0,  0.0,  1.0,  1.0,
+      -1.0, 1.0, 1.0, 1.0f, 0.0f,    // 0.0,  0.0,  1.0, 1.0,
+      -1.0, -1.0, 1.0, 1.0f, 1.0f,   // 0.0,  0.0,  1.0,  1.0,
 
-      1.0,  -1.0, -1.0, 1.0,  0.5,  0.0,  1.0,  1.0,  1.0,  -1.0,
-      1.0,  0.5,  0.0,  1.0,  1.0,  1.0,  1.0,  1.0,  0.5,  0.0,
-      1.0,  1.0,  -1.0, 1.0,  1.0,  0.5,  0.0,  1.0,
+      // right
+      1.0, -1.0, -1.0,  // 1.0,  0.5,  0.0,  1.0,
+      1.0, 1.0, -1.0,   // 1.0,  0.5,  0.0,  1.0,
+      1.0, 1.0, 1.0,    // 1.0,  0.5,  0.0, 1.0,
+      1.0, -1.0, 1.0,   // 1.0,  0.5,  0.0,  1.0,
 
-      -1.0, -1.0, -1.0, 0.0,  0.5,  1.0,  1.0,  -1.0, -1.0, 1.0,
-      0.0,  0.5,  1.0,  1.0,  1.0,  -1.0, 1.0,  0.0,  0.5,  1.0,
-      1.0,  1.0,  -1.0, -1.0, 0.0,  0.5,  1.0,  1.0,
+      // bottom
+      -1.0, -1.0, -1.0,  // 0.0,  0.5,  1.0,  1.0,
+      -1.0, -1.0, 1.0,   // 0.0,  0.5,  1.0,  1.0,
+      1.0, -1.0, 1.0,    // 0.0,  0.5,  1.0, 1.0,
+      1.0, -1.0, -1.0,   // 0.0,  0.5,  1.0,  1.0,
 
-      -1.0, 1.0,  -1.0, 1.0,  0.0,  0.5,  1.0,  -1.0, 1.0,  1.0,
-      1.0,  0.0,  0.5,  1.0,  1.0,  1.0,  1.0,  1.0,  0.0,  0.5,
-      1.0,  1.0,  1.0,  -1.0, 1.0,  0.0,  0.5,  1.0};
+      // top
+      -1.0, 1.0, -1.0,  // 1.0,  0.0,  0.5,  1.0,
+      -1.0, 1.0, 1.0,   // 1.0,  0.0,  0.5,  1.0,
+      1.0, 1.0, 1.0,    // 1.0,  0.0,  0.5, 1.0,
+      1.0, 1.0, -1.0,   // 1.0,  0.0,  0.5,  1.0
+  };
   sg_buffer vbuf = sg_make_buffer(
       &(sg_buffer_desc){.data = SG_RANGE(vertices), .label = "cube-vertices"});
 
@@ -319,7 +335,7 @@ void init(void) {
           {/* test to provide buffer stride, but no attr offsets */
            .buffers[0].stride = 28,
            .attrs = {[ATTR_vs_position].format = SG_VERTEXFORMAT_FLOAT3,
-                     [ATTR_vs_color0].format = SG_VERTEXFORMAT_FLOAT4}},
+                     [ATTR_vs_texcoord0].format = SG_VERTEXFORMAT_FLOAT2}},
       .shader = shd,
       .index_type = SG_INDEXTYPE_UINT16,
       .cull_mode = SG_CULLMODE_BACK,
@@ -361,6 +377,8 @@ void init(void) {
   state.skybox_bind.vertex_buffers[0] = skybox_buffer;
   sg_image skybox_img_id = sg_alloc_image();
   state.skybox_bind.fs_images[SLOT_skybox_texture] = skybox_img_id;
+  sg_image cube_img_id = sg_alloc_image();
+  state.cube_bind.fs_images[SLOT_cube_texture] = cube_img_id;
 
   state.skybox_pip = sg_make_pipeline(&(sg_pipeline_desc){
       .shader = sg_make_shader(skybox_shader_desc(sg_query_backend())),
@@ -383,6 +401,13 @@ void init(void) {
                                   .callback = icon_fetch_callback,
                                   .buffer_ptr = favicon_buffer,
                                   .buffer_size = sizeof(favicon_buffer)});
+
+  load_image(&(image_request_t){.img_id = cube_img_id,
+                                .path = "container2.png",
+                                .buffer_ptr = state.texture_buffer,
+                                .buffer_size = sizeof(state.texture_buffer),
+                                .wrap_u = SG_WRAP_CLAMP_TO_EDGE,
+                                .wrap_v = SG_WRAP_CLAMP_TO_EDGE});
 
   load_cubemap(&(cubemap_request_t){.img_id = skybox_img_id,
                                     .path_right = "right.jpg",
@@ -411,11 +436,13 @@ void frame(void) {
 
   camera_update(&state.cam, deltaTime);
 
-  // sdtx_canvas(w * 0.5f, h * 0.5f);
-  // sdtx_origin(2, 2);
-  // sdtx_puts("Sokol Header Allocations:\n\n");
-  // sdtx_printf("  Num: %d\n", smemtrack_info().num_allocs);
-  // sdtx_printf("  Allocs: %d bytes\n", smemtrack_info().num_bytes);
+  if (state.show_mem_ui) {
+    sdtx_canvas(w * 0.5f, h * 0.5f);
+    sdtx_origin(2, 2);
+    sdtx_puts("Sokol Header Allocations:\n\n");
+    sdtx_printf("  Num: %d\n", smemtrack_info().num_allocs);
+    sdtx_printf("  Allocs: %d bytes\n", smemtrack_info().num_bytes);
+  }
 
   hmm_mat4 view = camera_get_view_matrix(&state.cam);
   hmm_mat4 projection =
@@ -462,6 +489,9 @@ void event(const sapp_event* e) {
   if (e->type == SAPP_EVENTTYPE_KEY_UP) {
     if (e->key_code == SAPP_KEYCODE_H) {
       state.show_debug_ui = !state.show_debug_ui;
+    }
+    if (e->key_code == SAPP_KEYCODE_N) {
+      state.show_mem_ui = !state.show_mem_ui;
     }
   }
   hmm_vec2 mouse_offset = HMM_Vec2(0.0f, 0.0f);
