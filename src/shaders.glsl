@@ -28,6 +28,33 @@ void main() {
 }
 @end
 
+@vs textured_vs
+uniform vs_params {
+    mat4 mvp;
+};
+
+in vec4 position;
+in vec2 texcoord0;
+
+out vec2 texcoord;
+
+void main() {
+    gl_Position = mvp * position;
+    texcoord = texcoord0;
+}
+@end
+
+@fs textured_fs
+in vec2 texcoord;
+out vec4 frag_color;
+
+uniform sampler2D cube_texture;
+
+void main() {
+    frag_color = texture(cube_texture, texcoord);
+}
+@end
+
 @vs vs_skybox
 in vec3 a_pos;
 
@@ -58,5 +85,5 @@ void main() {
 @end
 
 @program skybox vs_skybox fs_skybox
-
 @program cube vs fs
+@program textured_cube textured_vs textured_fs

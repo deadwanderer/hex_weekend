@@ -1,10 +1,6 @@
 ---
 options:
-  src_dir: "skybox/standard/"
+  src_dir: 'textures/'
 files:
-  - "front.jpg"
-  - "back.jpg"
-  - "up.jpg"
-  - "down.jpg"
-  - "left.jpg"
-  - "right.jpg"
+  - 'container2.png'
+  - 'container2_specular.png'
