@@ -93,8 +93,8 @@ static struct {
   uint64_t lastFrameTime;
 } state;
 
-const int SCREEN_WIDTH = 1920;
-const int SCREEN_HEIGHT = 1080;
+const int SCREEN_WIDTH = 1280;
+const int SCREEN_HEIGHT = 768;
 const float VELOCITY = 25.0f;
 
 static void fail_callback() {
@@ -279,6 +279,7 @@ void init(void) {
 
   float vertices[] = {
       // back
+      // position          // texcoord
       -1.0f, -1.0f, -1.0f, 1.0f, 1.0f,  // 1.0,  0.0,  0.0,  1.0,
       1.0f, -1.0f, -1.0f, 0.0f, 1.0f,   // 1.0,  0.0,  0.0,  1.0,
       1.0f, 1.0f, -1.0f, 0.0f, 0.0f,    // 1.0,  0.0,  0.0, 1.0,
@@ -291,16 +292,16 @@ void init(void) {
       -1.0f, 1.0f, 1.0f, 0.0f, 0.0f,   // 0.0,  1.0,  0.0,  1.0,
 
       // left
-      -1.0f, -1.0f, -1.0f, 1.0f, 0.0f,  // 0.0,  0.0,  1.0,  1.0,
+      -1.0f, -1.0f, -1.0f, 0.0f, 1.0f,  // 0.0,  0.0,  1.0,  1.0,
       -1.0f, 1.0f, -1.0f, 0.0f, 0.0f,   // 0.0,  0.0,  1.0,  1.0,
-      -1.0f, 1.0f, 1.0f, 0.0f, 1.0f,    // 0.0,  0.0,  1.0, 1.0,
+      -1.0f, 1.0f, 1.0f, 1.0f, 0.0f,    // 0.0,  0.0,  1.0, 1.0,
       -1.0f, -1.0f, 1.0f, 1.0f, 1.0f,   // 0.0,  0.0,  1.0,  1.0,
 
       // right
       1.0f, -1.0f, -1.0f, 1.0f, 1.0f,  // 1.0,  0.5,  0.0,  1.0,
-      1.0f, 1.0f, -1.0f, 0.0f, 1.0f,   // 1.0,  0.5,  0.0,  1.0,
+      1.0f, 1.0f, -1.0f, 1.0f, 0.0f,   // 1.0,  0.5,  0.0,  1.0,
       1.0f, 1.0f, 1.0f, 0.0f, 0.0f,    // 1.0,  0.5,  0.0, 1.0,
-      1.0f, -1.0f, 1.0f, 1.0f, 0.0f,   // 1.0,  0.5,  0.0,  1.0,
+      1.0f, -1.0f, 1.0f, 0.0f, 1.0f,   // 1.0,  0.5,  0.0,  1.0,
 
       // bottom
       -1.0f, -1.0f, -1.0f, 0.0f, 0.0f,  // 0.0,  0.5,  1.0,  1.0,
@@ -314,13 +315,19 @@ void init(void) {
       1.0f, 1.0f, 1.0f, 0.0f, 1.0f,    // 1.0,  0.0,  0.5, 1.0,
       1.0f, 1.0f, -1.0f, 0.0f, 0.0f,   // 1.0,  0.0,  0.5,  1.0
   };
+
   sg_buffer vbuf = sg_make_buffer(
       &(sg_buffer_desc){.data = SG_RANGE(vertices), .label = "cube-vertices"});
 
   /* create an index buffer for the cube */
-  uint16_t indices[] = {0,  1,  2,  0,  2,  3,  6,  5,  4,  7,  6,  4,
-                        8,  9,  10, 8,  10, 11, 14, 13, 12, 15, 14, 12,
-                        16, 17, 18, 16, 18, 19, 22, 21, 20, 23, 22, 20};
+  uint16_t indices[] = {
+      0,  1,  2,  0,  2,  3,   // back
+      6,  5,  4,  7,  6,  4,   // front
+      10, 11, 8,  9,  10, 8,   // left
+      14, 13, 12, 15, 14, 12,  // right
+      16, 17, 18, 16, 18, 19,  // bottom
+      22, 21, 20, 23, 22, 20   // top
+  };
   sg_buffer ibuf =
       sg_make_buffer(&(sg_buffer_desc){.type = SG_BUFFERTYPE_INDEXBUFFER,
                                        .data = SG_RANGE(indices),
@@ -458,22 +465,25 @@ void frame(void) {
   sg_apply_bindings(&state.cube_bind);
   sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_vs_params, &SG_RANGE(vs_params));
   sg_draw(0, 36, 1);
+  /*
+    view.Elements[3][0] = 0.0f;
+    view.Elements[3][1] = 0.0f;
+    view.Elements[3][2] = 0.0f;
 
-  view.Elements[3][0] = 0.0f;
-  view.Elements[3][1] = 0.0f;
-  view.Elements[3][2] = 0.0f;
+    skybox_vs_params_t skybox_params;
+    skybox_params.view = view;
+    skybox_params.projection = projection;
 
-  skybox_vs_params_t skybox_params;
-  skybox_params.view = view;
-  skybox_params.projection = projection;
+    sg_apply_pipeline(state.skybox_pip);
+    sg_apply_bindings(&state.skybox_bind);
+    sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_skybox_vs_params,
+                      &SG_RANGE(skybox_params));
+    sg_draw(0, 36, 1);
+    */
 
-  sg_apply_pipeline(state.skybox_pip);
-  sg_apply_bindings(&state.skybox_bind);
-  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_skybox_vs_params,
-                    &SG_RANGE(skybox_params));
-  sg_draw(0, 36, 1);
-
-  // sdtx_draw();
+  if (state.show_mem_ui) {
+    sdtx_draw();
+  }
   if (state.show_debug_ui) {
     __cdbgui_draw();
   }
@@ -528,7 +538,7 @@ sapp_desc sokol_main(int argc, char* argv[]) {
       .width = SCREEN_WIDTH,
       .height = SCREEN_HEIGHT,
       .gl_force_gles2 = false,
-      .window_title = "Hex_Weekend",
+      .window_title = "App",
       .icon.sokol_default = false,
   };
 }
