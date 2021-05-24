@@ -55,6 +55,42 @@ void main() {
 }
 @end
 
+@vs shape_vs
+uniform shape_vs_params {
+    float draw_mode;
+    mat4 mvp;
+};
+
+layout(location=0) in vec4 position;
+layout(location=1) in vec3 normal;
+layout(location=2) in vec2 texcoord;
+layout(location=3) in vec4 color0;
+
+out vec4 color;
+
+void main() {
+    gl_Position = mvp * position;
+    if (draw_mode == 0.0) {
+        color = vec4((normal + 1.0) * 0.5, 1.0);
+    }
+    else if (draw_mode == 1.0) {
+        color = vec4(texcoord, 0.0, 1.0);
+    }
+    else {
+        color = color0;
+    }
+}
+@end
+
+@fs shape_fs
+in vec4 color;
+out vec4 frag_color;
+
+void main() {
+    frag_color = color;
+}
+@end
+
 @vs vs_skybox
 in vec3 a_pos;
 
@@ -87,3 +123,4 @@ void main() {
 @program skybox vs_skybox fs_skybox
 @program cube vs fs
 @program textured_cube textured_vs textured_fs
+@program shape shape_vs shape_fs

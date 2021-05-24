@@ -7,6 +7,7 @@
 #include "sokol_memtrack.h"
 #include "sokol_debugtext.h"
 #include "sokol_fetch.h"
+#include "sokol_shape.h"
 #include "sokol_glue.h"
 #include "cdbgui/cdbgui.h"
 #include "HandmadeMath/HandmadeMath.h"
@@ -81,7 +82,10 @@ static struct {
   sg_bindings cube_bind;
   sg_pipeline skybox_pip;
   sg_bindings skybox_bind;
+  sg_pipeline shape_pip;
+  sg_bindings shape_bind;
   sg_pass_action pass_action;
+  sshape_element_range_t shape_elems;
   _cubemap_request_t cubemap_req;
   uint8_t texture_buffer[1024 * 1024];
   uint8_t cubemap_buffer[6 * 1024 * 1024];
@@ -404,6 +408,73 @@ void init(void) {
           },
       .label = "skybox-pipeline"});
 
+  // SHAPES
+  state.shape_pip = sg_make_pipeline(&(sg_pipeline_desc){
+      .shader = sg_make_shader(shape_shader_desc(sg_query_backend())),
+      .layout = {.buffers[0] = sshape_buffer_layout_desc(),
+                 .attrs = {[0] = sshape_position_attr_desc(),
+                           [1] = sshape_normal_attr_desc(),
+                           [2] = sshape_texcoord_attr_desc(),
+                           [3] = sshape_color_attr_desc()}},
+      .index_type = SG_INDEXTYPE_UINT16,
+      .cull_mode = SG_CULLMODE_NONE,
+      .depth = {.compare = SG_COMPAREFUNC_LESS_EQUAL, .write_enabled = true},
+  });
+
+  sshape_vertex_t shape_vertices[6 * 1024];
+  uint16_t shape_indices[16 * 1024];
+  sshape_buffer_t buf = {
+      .vertices.buffer = SSHAPE_RANGE(shape_vertices),
+      .indices.buffer = SSHAPE_RANGE(shape_indices),
+  };
+
+  const hmm_mat4 box_transform = HMM_Translate(HMM_Vec3(-2.0f, 0.0f, -2.0f));
+  const hmm_mat4 sphere_transform = HMM_Translate(HMM_Vec3(2.0f, 0.0f, -2.0f));
+  const hmm_mat4 cylinder_transform =
+      HMM_Translate(HMM_Vec3(2.0f, 0.0f, -4.0f));
+  const hmm_mat4 torus_transform = HMM_Translate(HMM_Vec3(-2.0f, 0.0f, -4.0f));
+
+  buf = sshape_build_box(
+      &buf,
+      &(sshape_box_t){.width = 1.0f,
+                      .height = 1.0f,
+                      .depth = 1.0f,
+                      .tiles = 10,
+                      .random_colors = true,
+                      .transform = sshape_mat4(&box_transform.Elements[0][0])});
+  buf = sshape_build_sphere(
+      &buf, &(sshape_sphere_t){
+                .merge = true,
+                .radius = 0.75f,
+                .slices = 36,
+                .stacks = 20,
+                .random_colors = true,
+                .transform = sshape_mat4(&sphere_transform.Elements[0][0])});
+  buf = sshape_build_cylinder(
+      &buf, &(sshape_cylinder_t){
+                .merge = true,
+                .radius = 0.5f,
+                .height = 1.0f,
+                .slices = 36,
+                .stacks = 10,
+                .random_colors = true,
+                .transform = sshape_mat4(&cylinder_transform.Elements[0][0])});
+  buf = sshape_build_torus(
+      &buf, &(sshape_torus_t){
+                .merge = true,
+                .radius = 0.75f,
+                .ring_radius = 0.3f,
+                .rings = 36,
+                .sides = 18,
+                .random_colors = true,
+                .transform = sshape_mat4(&torus_transform.Elements[0][0])});
+
+  state.shape_elems = sshape_element_range(&buf);
+  const sg_buffer_desc vbuf_desc = sshape_vertex_buffer_desc(&buf);
+  const sg_buffer_desc ibuf_desc = sshape_index_buffer_desc(&buf);
+  state.shape_bind.vertex_buffers[0] = sg_make_buffer(&vbuf_desc);
+  state.shape_bind.index_buffer = sg_make_buffer(&ibuf_desc);
+
   camera_set_up(&state.cam, HMM_Vec3(0.0f, 0.5f, 3.0f));
 
   sfetch_send(&(sfetch_request_t){.path = "favicon-32x32.png",
@@ -456,6 +527,8 @@ void frame(void) {
   hmm_mat4 view = camera_get_view_matrix(&state.cam);
   hmm_mat4 projection =
       HMM_Perspective(camera_get_fov(&state.cam), aspect, 0.1f, 100.0f);
+
+  // DRAW CUBE
   vs_params_t vs_params;
   vs_params.mvp =
       HMM_MultiplyMat4(HMM_MultiplyMat4(projection, view), HMM_Mat4d(1.0f));
@@ -465,6 +538,18 @@ void frame(void) {
   sg_apply_bindings(&state.cube_bind);
   sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_vs_params, &SG_RANGE(vs_params));
   sg_draw(0, 36, 1);
+
+  // DRAW SHAPES
+  shape_vs_params_t shape_params;
+  shape_params.draw_mode = 0.0f;
+  shape_params.mvp = vs_params.mvp;
+  sg_apply_pipeline(state.shape_pip);
+  sg_apply_bindings(&state.shape_bind);
+  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_shape_vs_params,
+                    &SG_RANGE(shape_params));
+  sg_draw(state.shape_elems.base_element, state.shape_elems.num_elements, 1);
+
+  // DRAW SKYBOX
   /*
     view.Elements[3][0] = 0.0f;
     view.Elements[3][1] = 0.0f;
