@@ -28,4 +28,35 @@ void main() {
 }
 @end
 
+@vs vs_skybox
+in vec3 a_pos;
+
+out vec3 tex_coords;
+
+uniform skybox_vs_params {
+    mat4 view;
+    mat4 projection;
+};
+
+void main() {
+    tex_coords = a_pos;
+    vec4 pos = projection * view * vec4(a_pos, 1.0);
+    gl_Position = pos.xyww;
+}
+@end
+
+@fs fs_skybox
+in vec3 tex_coords;
+
+out vec4 frag_color;
+
+uniform samplerCube skybox_texture;
+
+void main() {
+    frag_color = texture(skybox_texture, tex_coords);
+}
+@end
+
+@program skybox vs_skybox fs_skybox
+
 @program cube vs fs

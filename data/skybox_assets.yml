@@ -1,0 +1,10 @@
+---
+options:
+  src_dir: "skybox/standard/"
+files:
+  - "front.jpg"
+  - "back.jpg"
+  - "up.jpg"
+  - "down.jpg"
+  - "left.jpg"
+  - "right.jpg"

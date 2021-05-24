@@ -17,8 +17,54 @@
 #include "Camera.h"
 // #include "hex.h"
 
-static void fetch_callback(const sfetch_response_t*);
 static uint8_t favicon_buffer[32 * 32 * 4];
+
+typedef void (*fail_callback_t)();
+
+typedef struct image_request_t {
+  const char* path;
+  sg_image img_id;
+  sg_wrap wrap_u;
+  sg_wrap wrap_v;
+  void* buffer_ptr;
+  uint32_t buffer_size;
+  fail_callback_t fail_callback;
+} image_request_t;
+
+typedef struct cubemap_request_t {
+  const char* path_right;
+  const char* path_left;
+  const char* path_up;
+  const char* path_down;
+  const char* path_front;
+  const char* path_back;
+  sg_image img_id;
+  uint8_t* buffer_ptr;
+  uint32_t buffer_offset;
+  fail_callback_t fail_callback;
+} cubemap_request_t;
+
+typedef struct _cubemap_request_t {
+  sg_image img_id;
+  uint8_t* buffer;
+  int buffer_offset;
+  int fetched_sizes[6];
+  int finished_requests;
+  bool failed;
+  fail_callback_t fail_callback;
+} _cubemap_request_t;
+
+typedef struct _cubemap_request_instance_t {
+  int index;
+  _cubemap_request_t* request;
+} _cubemap_request_instance_t;
+
+typedef struct {
+  sg_image img_id;
+  sg_wrap wrap_u;
+  sg_wrap wrap_v;
+  fail_callback_t fail_callback;
+} image_request_data;
 
 enum INPUTS {
   INPUT_W,
@@ -31,26 +77,196 @@ enum INPUTS {
 };
 
 static struct {
-  sg_pipeline pip;
-  sg_bindings bind;
+  sg_pipeline cube_pip;
+  sg_bindings cube_bind;
+  sg_pipeline skybox_pip;
+  sg_bindings skybox_bind;
+  sg_pass_action pass_action;
+  _cubemap_request_t cubemap_req;
+  uint8_t cubemap_buffer[6 * 1024 * 1024];
   camera_t cam;
   hmm_vec2 last_mouse;
   bool first_mouse;
+  bool show_debug_ui;
   uint64_t lastFrameTime;
 } state;
 
-sg_pass_action pass_action;
 const int SCREEN_WIDTH = 1920;
 const int SCREEN_HEIGHT = 1080;
 const float VELOCITY = 25.0f;
 
+static void fail_callback() {
+  state.pass_action = (sg_pass_action){
+      .colors[0] = {.action = SG_ACTION_CLEAR,
+                    .value = (sg_color){1.0f, 0.0f, 0.0f, 1.0f}}};
+}
+
+static void icon_fetch_callback(const sfetch_response_t* response) {
+  if (response->fetched) {
+    int png_width, png_height, num_channels;
+    const int desired_channels = 4;
+
+    stbi_uc* pixels = stbi_load_from_memory(
+        response->buffer_ptr, (int)response->fetched_size, &png_width,
+        &png_height, &num_channels, desired_channels);
+    if (pixels) {
+      sapp_set_icon(&(sapp_icon_desc){
+          .images = {
+              {.width = 32,
+               .height = 32,
+               .pixels = {.ptr = pixels,
+                          .size = (size_t)(png_width * png_height * 4)}}}});
+    }
+  }
+}
+
+static void image_fetch_callback(const sfetch_response_t* response) {
+  image_request_data req_data = *(image_request_data*)response->user_data;
+
+  if (response->fetched) {
+    int img_width, img_height, num_channels;
+    const int desired_channels = 4;
+    stbi_uc* pixels = stbi_load_from_memory(
+        response->buffer_ptr, (int)response->fetched_size, &img_width,
+        &img_height, &num_channels, desired_channels);
+    if (pixels) {
+      sg_init_image(req_data.img_id,
+                    &(sg_image_desc){
+                        .width = img_width,
+                        .height = img_height,
+                        .pixel_format = SG_PIXELFORMAT_RGBA8,
+                        .wrap_u = req_data.wrap_u,
+                        .wrap_v = req_data.wrap_v,
+                        .min_filter = SG_FILTER_LINEAR,
+                        .mag_filter = SG_FILTER_LINEAR,
+                        .data.subimage[0][0] = {
+                            .ptr = pixels,
+                            .size = img_width * img_height * desired_channels,
+                        }});
+      stbi_image_free(pixels);
+    }
+  } else if (response->failed) {
+    req_data.fail_callback();
+  }
+}
+
+void load_image(const image_request_t* request) {
+  image_request_data req_data = {.img_id = request->img_id,
+                                 .wrap_u = request->wrap_u,
+                                 .wrap_v = request->wrap_v,
+                                 .fail_callback = request->fail_callback};
+
+  sfetch_send(&(sfetch_request_t){.path = request->path,
+                                  .callback = image_fetch_callback,
+                                  .buffer_ptr = request->buffer_ptr,
+                                  .buffer_size = request->buffer_size,
+                                  .user_data_ptr = &req_data,
+                                  .user_data_size = sizeof(req_data)});
+}
+
+static bool _load_cubemap(_cubemap_request_t* request) {
+  const int desired_channels = 4;
+  int img_widths[6], img_heights[6];
+  stbi_uc* pixels_ptrs[6];
+  sg_image_data img_data;
+
+  for (int i = 0; i < 6; i++) {
+    int num_channel;
+    pixels_ptrs[i] =
+        stbi_load_from_memory(request->buffer + (i * request->buffer_offset),
+                              request->fetched_sizes[i], &img_widths[i],
+                              &img_heights[i], &num_channel, desired_channels);
+    img_data.subimage[i][0].ptr = pixels_ptrs[i];
+    img_data.subimage[i][0].size =
+        img_widths[i] * img_heights[i] * desired_channels;
+  }
+
+  bool valid = img_heights[0] > 0 && img_widths[0] > 0;
+
+  for (int i = 1; i < 6; i++) {
+    if (img_widths[i] != img_widths[0] || img_heights[i] != img_heights[0]) {
+      valid = false;
+      break;
+    }
+  }
+
+  if (valid) {
+    sg_init_image(request->img_id,
+                  &(sg_image_desc){.type = SG_IMAGETYPE_CUBE,
+                                   .width = img_widths[0],
+                                   .height = img_heights[0],
+                                   .pixel_format = SG_PIXELFORMAT_RGBA8,
+                                   .wrap_u = SG_WRAP_CLAMP_TO_EDGE,
+                                   .wrap_v = SG_WRAP_CLAMP_TO_EDGE,
+                                   .wrap_w = SG_WRAP_CLAMP_TO_EDGE,
+                                   .min_filter = SG_FILTER_LINEAR,
+                                   .mag_filter = SG_FILTER_LINEAR,
+                                   .data = img_data});
+  }
+
+  for (int i = 0; i < 6; i++) {
+    stbi_image_free(pixels_ptrs[i]);
+  }
+
+  return valid;
+}
+
+static void cubemap_fetch_callback(const sfetch_response_t* response) {
+  _cubemap_request_instance_t req_inst =
+      *(_cubemap_request_instance_t*)response->user_data;
+  _cubemap_request_t* request = req_inst.request;
+
+  if (response->fetched) {
+    request->fetched_sizes[req_inst.index] = response->fetched_size;
+    ++request->finished_requests;
+  } else if (response->failed) {
+    request->failed = true;
+    ++request->finished_requests;
+  }
+
+  if (request->finished_requests == 6) {
+    if (!request->failed) {
+      request->failed = !_load_cubemap(request);
+    }
+
+    if (request->failed) {
+      request->fail_callback();
+    }
+  }
+}
+
+void load_cubemap(cubemap_request_t* request) {
+  state.cubemap_req =
+      (_cubemap_request_t){.img_id = request->img_id,
+                           .buffer = request->buffer_ptr,
+                           .buffer_offset = request->buffer_offset,
+                           .fail_callback = request->fail_callback};
+
+  const char* cubemap[6] = {request->path_right, request->path_left,
+                            request->path_up,    request->path_down,
+                            request->path_front, request->path_back};
+
+  for (int i = 0; i < 6; ++i) {
+    _cubemap_request_instance_t req_instance = {.index = i,
+                                                .request = &state.cubemap_req};
+    sfetch_send(&(sfetch_request_t){
+        .path = cubemap[i],
+        .callback = cubemap_fetch_callback,
+        .buffer_ptr = request->buffer_ptr + (i * request->buffer_offset),
+        .buffer_size = request->buffer_offset,
+        .user_data_ptr = &req_instance,
+        .user_data_size = sizeof(req_instance)});
+  }
+}
+
 void init(void) {
   sg_setup(&(sg_desc){.context = sapp_sgcontext()});
   sfetch_setup(
-      &(sfetch_desc_t){.max_requests = 1, .num_channels = 1, .num_lanes = 1});
+      &(sfetch_desc_t){.max_requests = 8, .num_channels = 2, .num_lanes = 4});
   stm_setup();
+  state.show_debug_ui = false;
   state.lastFrameTime = stm_now();
-  pass_action =
+  state.pass_action =
       (sg_pass_action){.colors[0] = {.action = SG_ACTION_CLEAR,
                                      .value = {0.1f, 0.15f, 0.2f, 1.0f}}};
   sdtx_setup(&(sdtx_desc_t){
@@ -98,7 +314,7 @@ void init(void) {
   sg_shader shd = sg_make_shader(cube_shader_desc(sg_query_backend()));
 
   /* create pipeline object */
-  state.pip = sg_make_pipeline(&(sg_pipeline_desc){
+  state.cube_pip = sg_make_pipeline(&(sg_pipeline_desc){
       .layout =
           {/* test to provide buffer stride, but no attr offsets */
            .buffers[0].stride = 28,
@@ -115,35 +331,69 @@ void init(void) {
       .label = "cube-pipeline"});
 
   /* setup resource bindings */
-  state.bind = (sg_bindings){.vertex_buffers[0] = vbuf, .index_buffer = ibuf};
+  state.cube_bind =
+      (sg_bindings){.vertex_buffers[0] = vbuf, .index_buffer = ibuf};
+
+  /* Set up skybox */
+  float skybox_vertices[] = {
+      // positions
+      -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f,
+      1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f,
+
+      -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f,
+      -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,
+
+      1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,
+      1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f,
+
+      -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+      1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,
+
+      -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,
+      1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f,
+
+      -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f,
+      1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f};
+
+  sg_buffer skybox_buffer = sg_make_buffer(&(sg_buffer_desc){
+      .data = SG_RANGE(skybox_vertices), .label = "skybox-vertices"});
+
+  state.skybox_bind.vertex_buffers[0] = skybox_buffer;
+  sg_image skybox_img_id = sg_alloc_image();
+  state.skybox_bind.fs_images[SLOT_skybox_texture] = skybox_img_id;
+
+  state.skybox_pip = sg_make_pipeline(&(sg_pipeline_desc){
+      .shader = sg_make_shader(skybox_shader_desc(sg_query_backend())),
+      .layout =
+          {
+              .attrs =
+                  {
+                      [ATTR_vs_skybox_a_pos].format = SG_VERTEXFORMAT_FLOAT3,
+                  },
+          },
+      .depth =
+          {
+              .compare = SG_COMPAREFUNC_LESS_EQUAL,
+          },
+      .label = "skybox-pipeline"});
 
   camera_set_up(&state.cam, HMM_Vec3(0.0f, 0.5f, 3.0f));
 
   sfetch_send(&(sfetch_request_t){.path = "favicon-32x32.png",
-                                  .callback = fetch_callback,
+                                  .callback = icon_fetch_callback,
                                   .buffer_ptr = favicon_buffer,
                                   .buffer_size = sizeof(favicon_buffer)});
-}
 
-static void fetch_callback(const sfetch_response_t* response) {
-  if (response->fetched) {
-    int png_width, png_height, num_channels;
-    const int desired_channels = 4;
-
-    stbi_uc* pixels = stbi_load_from_memory(
-        response->buffer_ptr, (int)response->fetched_size, &png_width,
-        &png_height, &num_channels, desired_channels);
-    if (pixels) {
-      printf("Data size: %d\n", (int)response->fetched_size);
-      printf("Image size: %dx%d\n", png_width, png_height);
-      sapp_set_icon(&(sapp_icon_desc){
-          .images = {
-              {.width = 32,
-               .height = 32,
-               .pixels = {.ptr = pixels,
-                          .size = (size_t)(png_width * png_height * 4)}}}});
-    }
-  }
+  load_cubemap(&(cubemap_request_t){.img_id = skybox_img_id,
+                                    .path_right = "right.jpg",
+                                    .path_left = "left.jpg",
+                                    .path_up = "up.jpg",
+                                    .path_down = "down.jpg",
+                                    .path_front = "front.jpg",
+                                    .path_back = "back.jpg",
+                                    .buffer_ptr = state.cubemap_buffer,
+                                    .buffer_offset = 1024 * 1024,
+                                    .fail_callback = fail_callback});
 }
 
 void frame(void) {
@@ -174,13 +424,30 @@ void frame(void) {
   vs_params.mvp =
       HMM_MultiplyMat4(HMM_MultiplyMat4(projection, view), HMM_Mat4d(1.0f));
 
-  sg_begin_default_pass(&pass_action, sapp_width(), sapp_height());
-  sg_apply_pipeline(state.pip);
-  sg_apply_bindings(&state.bind);
+  sg_begin_default_pass(&state.pass_action, sapp_width(), sapp_height());
+  sg_apply_pipeline(state.cube_pip);
+  sg_apply_bindings(&state.cube_bind);
   sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_vs_params, &SG_RANGE(vs_params));
   sg_draw(0, 36, 1);
+
+  view.Elements[3][0] = 0.0f;
+  view.Elements[3][1] = 0.0f;
+  view.Elements[3][2] = 0.0f;
+
+  skybox_vs_params_t skybox_params;
+  skybox_params.view = view;
+  skybox_params.projection = projection;
+
+  sg_apply_pipeline(state.skybox_pip);
+  sg_apply_bindings(&state.skybox_bind);
+  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_skybox_vs_params,
+                    &SG_RANGE(skybox_params));
+  sg_draw(0, 36, 1);
+
   // sdtx_draw();
-  __cdbgui_draw();
+  if (state.show_debug_ui) {
+    __cdbgui_draw();
+  }
   sg_end_pass();
   sg_commit();
 }
@@ -190,6 +457,11 @@ void event(const sapp_event* e) {
   if (e->type == SAPP_EVENTTYPE_KEY_DOWN) {
     if (e->key_code == SAPP_KEYCODE_ESCAPE) {
       sapp_request_quit();
+    }
+  }
+  if (e->type == SAPP_EVENTTYPE_KEY_UP) {
+    if (e->key_code == SAPP_KEYCODE_H) {
+      state.show_debug_ui = !state.show_debug_ui;
     }
   }
   hmm_vec2 mouse_offset = HMM_Vec2(0.0f, 0.0f);
