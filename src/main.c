@@ -64,6 +64,7 @@ typedef struct {
   sg_image img_id;
   sg_wrap wrap_u;
   sg_wrap wrap_v;
+  const char* label;
   fail_callback_t fail_callback;
 } image_request_data;
 
@@ -137,18 +138,20 @@ static void image_fetch_callback(const sfetch_response_t* response) {
         &img_height, &num_channels, desired_channels);
     if (pixels) {
       sg_init_image(req_data.img_id,
-                    &(sg_image_desc){
-                        .width = img_width,
-                        .height = img_height,
-                        .pixel_format = SG_PIXELFORMAT_RGBA8,
-                        .wrap_u = req_data.wrap_u,
-                        .wrap_v = req_data.wrap_v,
-                        .min_filter = SG_FILTER_LINEAR,
-                        .mag_filter = SG_FILTER_LINEAR,
-                        .data.subimage[0][0] = {
-                            .ptr = pixels,
-                            .size = img_width * img_height * desired_channels,
-                        }});
+                    &(sg_image_desc){.width = img_width,
+                                     .height = img_height,
+                                     .pixel_format = SG_PIXELFORMAT_RGBA8,
+                                     .wrap_u = req_data.wrap_u,
+                                     .wrap_v = req_data.wrap_v,
+                                     .min_filter = SG_FILTER_LINEAR,
+                                     .mag_filter = SG_FILTER_LINEAR,
+                                     .data.subimage[0][0] =
+                                         {
+                                             .ptr = pixels,
+                                             .size = img_width * img_height *
+                                                     desired_channels,
+                                         },
+                                     .label = req_data.label});
       stbi_image_free(pixels);
     }
   } else if (response->failed) {
@@ -156,11 +159,12 @@ static void image_fetch_callback(const sfetch_response_t* response) {
   }
 }
 
-void load_image(const image_request_t* request) {
+void load_image(const image_request_t* request, const char* image_label) {
   image_request_data req_data = {.img_id = request->img_id,
                                  .wrap_u = request->wrap_u,
                                  .wrap_v = request->wrap_v,
-                                 .fail_callback = request->fail_callback};
+                                 .fail_callback = request->fail_callback,
+                                 .label = image_label};
 
   sfetch_send(&(sfetch_request_t){.path = request->path,
                                   .callback = image_fetch_callback,
@@ -207,7 +211,8 @@ static bool _load_cubemap(_cubemap_request_t* request) {
                                    .wrap_w = SG_WRAP_CLAMP_TO_EDGE,
                                    .min_filter = SG_FILTER_LINEAR,
                                    .mag_filter = SG_FILTER_LINEAR,
-                                   .data = img_data});
+                                   .data = img_data,
+                                   .label = "cubemap-image"});
   }
 
   for (int i = 0; i < 6; i++) {
@@ -419,6 +424,7 @@ void init(void) {
       .index_type = SG_INDEXTYPE_UINT16,
       .cull_mode = SG_CULLMODE_NONE,
       .depth = {.compare = SG_COMPAREFUNC_LESS_EQUAL, .write_enabled = true},
+      .label = "shape-pipeline",
   });
 
   sshape_vertex_t shape_vertices[6 * 1024];
@@ -428,54 +434,60 @@ void init(void) {
       .indices.buffer = SSHAPE_RANGE(shape_indices),
   };
 
-  const hmm_mat4 box_transform = HMM_Translate(HMM_Vec3(-2.0f, 0.0f, -2.0f));
-  const hmm_mat4 sphere_transform = HMM_Translate(HMM_Vec3(2.0f, 0.0f, -2.0f));
-  const hmm_mat4 cylinder_transform =
-      HMM_Translate(HMM_Vec3(2.0f, 0.0f, -4.0f));
-  const hmm_mat4 torus_transform = HMM_Translate(HMM_Vec3(-2.0f, 0.0f, -4.0f));
+  // const hmm_mat4 box_transform = HMM_Translate(HMM_Vec3(-2.0f, 0.0f, -2.0f));
+  // const hmm_mat4 sphere_transform = HMM_Translate(HMM_Vec3(2.0f, 0.0f,
+  // -2.0f));
+  // const hmm_mat4 cylinder_transform =
+  //     HMM_Translate(HMM_Vec3(2.0f, 0.0f, -4.0f));
+  // const hmm_mat4 torus_transform = HMM_Translate(HMM_Vec3(-2.0f, 0.0f,
+  // -4.0f));
 
-  buf = sshape_build_box(
-      &buf,
-      &(sshape_box_t){.width = 1.0f,
-                      .height = 1.0f,
-                      .depth = 1.0f,
-                      .tiles = 10,
-                      .random_colors = true,
-                      .transform = sshape_mat4(&box_transform.Elements[0][0])});
-  buf = sshape_build_sphere(
-      &buf, &(sshape_sphere_t){
-                .merge = true,
-                .radius = 0.75f,
-                .slices = 36,
-                .stacks = 20,
-                .random_colors = true,
-                .transform = sshape_mat4(&sphere_transform.Elements[0][0])});
+  // buf = sshape_build_box(
+  //     &buf,
+  //     &(sshape_box_t){.width = 2.0f,
+  //                     .height = 2.0f,
+  //                     .depth = 2.0f,
+  //                     .tiles = 1,
+  //                     .random_colors = true,
+  //                     .transform =
+  //                     sshape_mat4(&box_transform.Elements[0][0])});
+  // buf = sshape_build_sphere(
+  //     &buf, &(sshape_sphere_t){
+  //               .merge = true,
+  //               .radius = 0.75f,
+  //               .slices = 36,
+  //               .stacks = 20,
+  //               .random_colors = true,
+  //               .transform = sshape_mat4(&sphere_transform.Elements[0][0])});
   buf = sshape_build_cylinder(
       &buf, &(sshape_cylinder_t){
                 .merge = true,
-                .radius = 0.5f,
+                .radius = 1.0f,
                 .height = 1.0f,
-                .slices = 36,
-                .stacks = 10,
+                .slices = 6,
+                .stacks = 1,
                 .random_colors = true,
-                .transform = sshape_mat4(&cylinder_transform.Elements[0][0])});
-  buf = sshape_build_torus(
-      &buf, &(sshape_torus_t){
-                .merge = true,
-                .radius = 0.75f,
-                .ring_radius = 0.3f,
-                .rings = 36,
-                .sides = 18,
-                .random_colors = true,
-                .transform = sshape_mat4(&torus_transform.Elements[0][0])});
+                // .transform = sshape_mat4(&cylinder_transform.Elements[0][0])
+            });
+  // buf = sshape_build_torus(
+  //     &buf, &(sshape_torus_t){
+  //               .merge = true,
+  //               .radius = 0.75f,
+  //               .ring_radius = 0.3f,
+  //               .rings = 36,
+  //               .sides = 18,
+  //               .random_colors = true,
+  //               .transform = sshape_mat4(&torus_transform.Elements[0][0])});
 
   state.shape_elems = sshape_element_range(&buf);
-  const sg_buffer_desc vbuf_desc = sshape_vertex_buffer_desc(&buf);
-  const sg_buffer_desc ibuf_desc = sshape_index_buffer_desc(&buf);
+  sg_buffer_desc vbuf_desc = sshape_vertex_buffer_desc(&buf);
+  vbuf_desc.label = "shape-vertices";
+  sg_buffer_desc ibuf_desc = sshape_index_buffer_desc(&buf);
+  ibuf_desc.label = "shape-indices";
   state.shape_bind.vertex_buffers[0] = sg_make_buffer(&vbuf_desc);
   state.shape_bind.index_buffer = sg_make_buffer(&ibuf_desc);
 
-  camera_set_up(&state.cam, HMM_Vec3(0.0f, 0.5f, 3.0f));
+  camera_set_up(&state.cam, HMM_Vec3(0.0f, 1.5f, 3.0f));
 
   sfetch_send(&(sfetch_request_t){.path = "favicon-32x32.png",
                                   .callback = icon_fetch_callback,
@@ -487,7 +499,8 @@ void init(void) {
                                 .buffer_ptr = state.texture_buffer,
                                 .buffer_size = sizeof(state.texture_buffer),
                                 .wrap_u = SG_WRAP_CLAMP_TO_EDGE,
-                                .wrap_v = SG_WRAP_CLAMP_TO_EDGE});
+                                .wrap_v = SG_WRAP_CLAMP_TO_EDGE},
+             "cube-image");
 
   load_cubemap(&(cubemap_request_t){.img_id = skybox_img_id,
                                     .path_right = "right.jpg",
@@ -529,42 +542,51 @@ void frame(void) {
       HMM_Perspective(camera_get_fov(&state.cam), aspect, 0.1f, 100.0f);
 
   // DRAW CUBE
-  vs_params_t vs_params;
-  vs_params.mvp =
-      HMM_MultiplyMat4(HMM_MultiplyMat4(projection, view), HMM_Mat4d(1.0f));
+  // vs_params_t vs_params;
+  // vs_params.mvp =
+  // HMM_MultiplyMat4(HMM_MultiplyMat4(projection, view), HMM_Mat4d(1.0f));
 
   sg_begin_default_pass(&state.pass_action, sapp_width(), sapp_height());
-  sg_apply_pipeline(state.cube_pip);
-  sg_apply_bindings(&state.cube_bind);
-  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_vs_params, &SG_RANGE(vs_params));
-  sg_draw(0, 36, 1);
+  // sg_apply_pipeline(state.cube_pip);
+  // sg_apply_bindings(&state.cube_bind);
+  // sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_vs_params, &SG_RANGE(vs_params));
+  // sg_draw(0, 36, 1);
 
   // DRAW SHAPES
   shape_vs_params_t shape_params;
   shape_params.draw_mode = 0.0f;
-  shape_params.mvp = vs_params.mvp;
   sg_apply_pipeline(state.shape_pip);
   sg_apply_bindings(&state.shape_bind);
-  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_shape_vs_params,
-                    &SG_RANGE(shape_params));
-  sg_draw(state.shape_elems.base_element, state.shape_elems.num_elements, 1);
+  for (int i = 0; i < 5; i++) {
+    for (int j = 0; j < 5; j++) {
+      float x = ((float)i + j * 0.5f - j / 2) * (2.0f * 0.866025404f);
+      float z = (float)j * 1.5f;
+
+      hmm_mat4 model = HMM_Translate(HMM_Vec3(x - 2, 0.0f, -z));
+      shape_params.mvp =
+          HMM_MultiplyMat4(HMM_MultiplyMat4(projection, view), model);
+
+      sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_shape_vs_params,
+                        &SG_RANGE(shape_params));
+      sg_draw(state.shape_elems.base_element, state.shape_elems.num_elements,
+              1);
+    }
+  }
 
   // DRAW SKYBOX
-  /*
-    view.Elements[3][0] = 0.0f;
-    view.Elements[3][1] = 0.0f;
-    view.Elements[3][2] = 0.0f;
+  view.Elements[3][0] = 0.0f;
+  view.Elements[3][1] = 0.0f;
+  view.Elements[3][2] = 0.0f;
 
-    skybox_vs_params_t skybox_params;
-    skybox_params.view = view;
-    skybox_params.projection = projection;
+  skybox_vs_params_t skybox_params;
+  skybox_params.view = view;
+  skybox_params.projection = projection;
 
-    sg_apply_pipeline(state.skybox_pip);
-    sg_apply_bindings(&state.skybox_bind);
-    sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_skybox_vs_params,
-                      &SG_RANGE(skybox_params));
-    sg_draw(0, 36, 1);
-    */
+  sg_apply_pipeline(state.skybox_pip);
+  sg_apply_bindings(&state.skybox_bind);
+  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_skybox_vs_params,
+                    &SG_RANGE(skybox_params));
+  sg_draw(0, 36, 1);
 
   if (state.show_mem_ui) {
     sdtx_draw();
