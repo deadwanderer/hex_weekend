@@ -67,26 +67,27 @@ layout(location=2) in vec2 texcoord;
 layout(location=3) in vec4 color0;
 
 out vec4 color;
+//out vec3 out_normal;
+//out vec2 out_texcoord;
 
 void main() {
     gl_Position = mvp * position;
-    if (draw_mode == 0.0) {
-        color = vec4((normal + 1.0) * 0.5, 1.0);
-    }
-    else if (draw_mode == 1.0) {
-        color = vec4(texcoord, 0.0, 1.0);
-    }
-    else {
-        color = color0;
-    }
+    color = color0;    
+    //out_normal = normal;
+    //out_texcoord = texcoord;
 }
 @end
 
 @fs shape_fs
 in vec4 color;
+//in vec3 out_normal;
+//in vec2 out_texcoord;
 out vec4 frag_color;
 
 void main() {
+    //vec3 norm = normalize(out_normal);
+    //vec2 redo = out_texcoord * vec2(0.4, 0.4);
+    //frag_color = color * vec4(norm, 0.5) * vec4(redo, 1.0, 0.5);
     frag_color = color;
 }
 @end
