@@ -57,7 +57,6 @@ void main() {
 
 @vs shape_vs
 uniform shape_vs_params {
-    float draw_mode;
     mat4 mvp;
 };
 
@@ -78,6 +77,31 @@ void main() {
 }
 @end
 
+@vs textured_shape_vs
+uniform textured_shape_vs_params {
+    mat4 model;
+    mat4 viewproj;
+};
+
+layout(location=0) in vec4 position;
+layout(location=1) in vec3 normal;
+layout(location=2) in vec2 texcoord;
+layout(location=3) in vec4 color0;
+
+out vec4 color;
+//out vec3 out_normal;
+out vec2 out_texcoord;
+out vec3 world_position;
+
+void main() {
+    gl_Position = viewproj * model * position;
+    color = color0;    
+    //out_normal = normal;
+    out_texcoord = texcoord;
+    world_position = (model * position).xyz;
+}
+@end
+
 @fs shape_fs
 in vec4 color;
 //in vec3 out_normal;
@@ -89,6 +113,24 @@ void main() {
     //vec2 redo = out_texcoord * vec2(0.4, 0.4);
     //frag_color = color * vec4(norm, 0.5) * vec4(redo, 1.0, 0.5);
     frag_color = color;
+}
+@end
+
+@fs textured_shape_fs
+in vec4 color;
+//in vec3 out_normal;
+in vec2 out_texcoord;
+in vec3 world_position;
+out vec4 frag_color;
+
+uniform sampler2D shape_texture;
+
+void main() {
+    //vec3 norm = normalize(out_normal);
+    //vec2 redo = out_texcoord * vec2(0.4, 0.4);
+    //frag_color = color * vec4(norm, 0.5) * vec4(redo, 1.0, 0.5);
+    //frag_color = color;
+    frag_color = texture(shape_texture, (world_position * 0.05).xz);
 }
 @end
 
@@ -125,3 +167,4 @@ void main() {
 @program cube vs fs
 @program textured_cube textured_vs textured_fs
 @program shape shape_vs shape_fs
+@program textured_shape textured_shape_vs textured_shape_fs

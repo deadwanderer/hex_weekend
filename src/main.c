@@ -93,6 +93,7 @@ static struct {
   _cubemap_request_t cubemap_req;
   uint8_t texture_buffer[1024 * 1024];
   uint8_t cubemap_buffer[6 * 1024 * 1024];
+  uint8_t shape_texture_buffer[6 * 256 * 1024];
   camera_t cam;
   hmm_vec2 last_mouse;
   bool first_mouse;
@@ -276,7 +277,7 @@ void load_cubemap(cubemap_request_t* request) {
 void init(void) {
   sg_setup(&(sg_desc){.context = sapp_sgcontext()});
   sfetch_setup(
-      &(sfetch_desc_t){.max_requests = 8, .num_channels = 2, .num_lanes = 4});
+      &(sfetch_desc_t){.max_requests = 16, .num_channels = 4, .num_lanes = 4});
   stm_setup();
   state.show_debug_ui = false;
   state.show_mem_ui = false;
@@ -400,6 +401,8 @@ void init(void) {
   state.skybox_bind.fs_images[SLOT_skybox_texture] = skybox_img_id;
   sg_image cube_img_id = sg_alloc_image();
   state.cube_bind.fs_images[SLOT_cube_texture] = cube_img_id;
+  sg_image shape_img_id = sg_alloc_image();
+  state.shape_bind.fs_images[SLOT_shape_texture] = shape_img_id;
 
   state.skybox_pip = sg_make_pipeline(&(sg_pipeline_desc){
       .shader = sg_make_shader(skybox_shader_desc(sg_query_backend())),
@@ -418,7 +421,7 @@ void init(void) {
 
   // SHAPES
   state.shape_pip = sg_make_pipeline(&(sg_pipeline_desc){
-      .shader = sg_make_shader(shape_shader_desc(sg_query_backend())),
+      .shader = sg_make_shader(textured_shape_shader_desc(sg_query_backend())),
       .layout = {.buffers[0] = sshape_buffer_layout_desc(),
                  .attrs = {[0] = sshape_position_attr_desc(),
                            [1] = sshape_normal_attr_desc(),
@@ -505,6 +508,15 @@ void init(void) {
                                 .wrap_v = SG_WRAP_CLAMP_TO_EDGE},
              "cube-image");
 
+  load_image(
+      &(image_request_t){.img_id = shape_img_id,
+                         .path = "sand.png",
+                         .buffer_ptr = state.shape_texture_buffer,
+                         .buffer_size = sizeof(state.shape_texture_buffer),
+                         .wrap_u = SG_WRAP_REPEAT,
+                         .wrap_v = SG_WRAP_REPEAT},
+      "shape-texture");
+
   load_cubemap(&(cubemap_request_t){.img_id = skybox_img_id,
                                     .path_right = "right.jpg",
                                     .path_left = "left.jpg",
@@ -556,18 +568,16 @@ void frame(void) {
   // sg_draw(0, 36, 1);
 
   // DRAW SHAPES
-  shape_vs_params_t shape_params;
-  shape_params.draw_mode = 0.0f;
+  textured_shape_vs_params_t shape_params;
   sg_apply_pipeline(state.shape_pip);
   sg_apply_bindings(&state.shape_bind);
+  shape_params.viewproj = HMM_MultiplyMat4(projection, view);
   for (int i = 0; i < 5; i++) {
     for (int j = 0; j < 5; j++) {
       float x = ((float)i + j * 0.5f - j / 2) * (2.0f * 0.866025404f);
       float z = (float)j * 1.5f;
 
-      hmm_mat4 model = HMM_Translate(HMM_Vec3(x - 2, 0.0f, -z));
-      shape_params.mvp =
-          HMM_MultiplyMat4(HMM_MultiplyMat4(projection, view), model);
+      shape_params.model = HMM_Translate(HMM_Vec3(x - 2, 0.0f, -z));
 
       sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_shape_vs_params,
                         &SG_RANGE(shape_params));

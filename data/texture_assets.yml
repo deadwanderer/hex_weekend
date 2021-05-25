@@ -4,3 +4,4 @@ options:
 files:
   - 'container2.png'
   - 'container2_specular.png'
+  - 'sand.png'
