@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS (1)
 //------------------------------------------------------------------------------
 //  clear-sapp.c
 //------------------------------------------------------------------------------
@@ -12,6 +13,8 @@
 #include "cdbgui/cdbgui.h"
 #include "HandmadeMath/HandmadeMath.h"
 #include "shaders.glsl.h"
+
+#include "config.h"
 
 #include "stb/stb_image.h"
 
@@ -637,6 +640,10 @@ void cleanup(void) {
 sapp_desc sokol_main(int argc, char* argv[]) {
   (void)argc;
   (void)argv;
+  char app_title[21];
+  sprintf(app_title, "App Version %s.%s.%s", PROJECT_VERSION_MAJOR,
+          PROJECT_VERSION_MINOR, PROJECT_VERSION_PATCH);
+  app_title[20] = '\0';
   return (sapp_desc){
       .init_cb = init,
       .frame_cb = frame,
@@ -645,7 +652,7 @@ sapp_desc sokol_main(int argc, char* argv[]) {
       .width = SCREEN_WIDTH,
       .height = SCREEN_HEIGHT,
       .gl_force_gles2 = false,
-      .window_title = "App",
+      .window_title = app_title,
       .icon.sokol_default = false,
   };
 }

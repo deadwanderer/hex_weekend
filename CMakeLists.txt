@@ -2,7 +2,9 @@
 # project: hex_weekend
 #
 cmake_minimum_required(VERSION 3.14)
-project(hex_weekend)
+project(hex_weekend VERSION 0.1.5)
+configure_file(${CMAKE_SOURCE_DIR}/include/config.h.in src/config.h)
+
 set(CMAKE_C_STANDARD 99)
 if (CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
     set(CMAKE_CXX_STANDARD 17)
