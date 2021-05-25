@@ -61,4 +61,4 @@ enum INPUTS {
   INPUT_RIGHT,
   INPUT_NUM
 };
-#endif _TYPES_H
+#endif  // _TYPES_H
