@@ -314,7 +314,16 @@ void init(void) {
   state.shape_bind.vertex_buffers[0] = sg_make_buffer(&vbuf_desc);
   state.shape_bind.index_buffer = sg_make_buffer(&ibuf_desc);
 
-  camera_set_up(&state.cam, HMM_Vec3(0.0f, 1.5f, 3.0f));
+  camera_set_up(&state.cam, HMM_Vec3(0.0f, 2.5f, 2.0f),
+                (&(cam_desc_t){
+                    .constrain_movement = true,
+                    .min_x = -3.5f,
+                    .max_x = 7.5f,
+                    .min_y = 1.01f,
+                    .max_y = 5.0f,
+                    .min_z = -7.5f,
+                    .max_z = 3.5f,
+                }));
 
   sfetch_send(&(sfetch_request_t){.path = "favicon-32x32.png",
                                   .callback = icon_fetch_callback,
@@ -365,9 +374,13 @@ void frame(void) {
 
   camera_update(&state.cam, deltaTime);
 
+  sdtx_canvas(w * 0.5f, h * 0.5f);
+  sdtx_origin(2, 2);
+  sdtx_printf("CamPos: (%.2f, %.2f, %.2f)\n", state.cam.position.X,
+              state.cam.position.Y, state.cam.position.Z);
+
   if (state.show_mem_ui) {
-    sdtx_canvas(w * 0.5f, h * 0.5f);
-    sdtx_origin(2, 2);
+    sdtx_move_y(2);
     sdtx_puts("Sokol Header Allocations:\n\n");
     sdtx_printf("  Num: %d\n", smemtrack_info().num_allocs);
     sdtx_printf("  Allocs: %d bytes\n", smemtrack_info().num_bytes);
@@ -422,9 +435,9 @@ void frame(void) {
                     &SG_RANGE(skybox_params));
   sg_draw(0, 36, 1);
 
-  if (state.show_mem_ui) {
-    sdtx_draw();
-  }
+  // if (state.show_mem_ui) {
+  sdtx_draw();
+  // }
   if (state.show_debug_ui) {
     // __cdbgui_draw();
   }
