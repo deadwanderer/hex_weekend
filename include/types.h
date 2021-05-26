@@ -5,6 +5,7 @@
 #include "sokol_fetch.h"
 
 typedef void (*fail_callback_t)();
+typedef void (*success_callback_t)();
 
 typedef struct image_request_t {
   const char* path;
@@ -27,6 +28,7 @@ typedef struct cubemap_request_t {
   uint8_t* buffer_ptr;
   uint32_t buffer_offset;
   fail_callback_t fail_callback;
+  success_callback_t success_callback;
 } cubemap_request_t;
 
 typedef struct _cubemap_request_t {
@@ -37,6 +39,7 @@ typedef struct _cubemap_request_t {
   int finished_requests;
   bool failed;
   fail_callback_t fail_callback;
+  success_callback_t success_callback;
 } _cubemap_request_t;
 
 typedef struct _cubemap_request_instance_t {

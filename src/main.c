@@ -16,7 +16,7 @@
 
 #include "config.h"
 #include "types.h"
-#include "fetch.h"
+#include "asset_loading.h"
 
 #include "stb/stb_image.h"
 
@@ -26,8 +26,8 @@
 static uint8_t favicon_buffer[32 * 32 * 4];
 
 static struct {
-  sg_pipeline cube_pip;
-  sg_bindings cube_bind;
+  // sg_pipeline cube_pip;
+  // sg_bindings cube_bind;
   sg_pipeline skybox_pip;
   sg_bindings skybox_bind;
   sg_pipeline shape_pip;
@@ -35,7 +35,7 @@ static struct {
   sg_pass_action pass_action;
   sshape_element_range_t shape_elems;
   _cubemap_request_t cubemap_req;
-  uint8_t texture_buffer[1024 * 1024];
+  // uint8_t texture_buffer[1024 * 1024];
   uint8_t cubemap_buffer[6 * 1024 * 1024];
   uint8_t shape_texture_buffer[6 * 256 * 1024];
   camera_t cam;
@@ -44,6 +44,10 @@ static struct {
   bool show_debug_ui;
   bool show_mem_ui;
   uint64_t lastFrameTime;
+  uint64_t timeToLoadImages;
+  uint64_t imageLoadStartTime;
+  uint64_t renderTime;
+  uint64_t initTime;
 } state;
 
 const int SCREEN_WIDTH = 1280;
@@ -54,6 +58,10 @@ static void fail_callback() {
   state.pass_action = (sg_pass_action){
       .colors[0] = {.action = SG_ACTION_CLEAR,
                     .value = (sg_color){1.0f, 0.0f, 0.0f, 1.0f}}};
+}
+
+static void success_callback() {
+  state.timeToLoadImages = stm_diff(stm_now(), state.imageLoadStartTime);
 }
 
 void load_image(const image_request_t* request, const char* image_label) {
@@ -76,7 +84,8 @@ void load_cubemap(cubemap_request_t* request) {
       (_cubemap_request_t){.img_id = request->img_id,
                            .buffer = request->buffer_ptr,
                            .buffer_offset = request->buffer_offset,
-                           .fail_callback = request->fail_callback};
+                           .fail_callback = request->fail_callback,
+                           .success_callback = request->success_callback};
 
   const char* cubemap[6] = {request->path_right, request->path_left,
                             request->path_up,    request->path_down,
@@ -100,9 +109,14 @@ void init(void) {
   sfetch_setup(
       &(sfetch_desc_t){.max_requests = 16, .num_channels = 4, .num_lanes = 4});
   stm_setup();
+  uint64_t initStartTime = stm_now();
   state.show_debug_ui = false;
   state.show_mem_ui = false;
   state.lastFrameTime = stm_now();
+  state.renderTime = 0;
+  state.initTime = 0;
+  state.imageLoadStartTime = 0;
+  state.timeToLoadImages = 0;
   state.pass_action =
       (sg_pass_action){.colors[0] = {.action = SG_ACTION_CLEAR,
                                      .value = {0.1f, 0.15f, 0.2f, 1.0f}}};
@@ -111,70 +125,39 @@ void init(void) {
   });
   // __cdbgui_setup(sapp_sample_count());
 
-  float vertices[] = {
-      // back
-      // position          // texcoord
-      -1.0f, -1.0f, -1.0f, 1.0f, 1.0f,  // 1.0,  0.0,  0.0,  1.0,
-      1.0f, -1.0f, -1.0f, 0.0f, 1.0f,   // 1.0,  0.0,  0.0,  1.0,
-      1.0f, 1.0f, -1.0f, 0.0f, 0.0f,    // 1.0,  0.0,  0.0, 1.0,
-      -1.0f, 1.0f, -1.0f, 1.0f, 0.0f,   // 1.0,  0.0,  0.0,  1.0,
+  /*
+    float vertices[] = {
+        -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f,  -1.0f, -1.0f, 0.0f, 1.0f,
+        1.0f,  1.0f,  -1.0f, 0.0f, 0.0f, -1.0f, 1.0f,  -1.0f, 1.0f, 0.0f,
+        -1.0f, -1.0f, 1.0f,  0.0f, 1.0f, 1.0f,  -1.0f, 1.0f,  1.0f, 1.0f,
+        1.0f,  1.0f,  1.0f,  1.0f, 0.0f, -1.0f, 1.0f,  1.0f,  0.0f, 0.0f,
+        -1.0f, -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 1.0f,  -1.0f, 0.0f, 0.0f,
+        -1.0f, 1.0f,  1.0f,  1.0f, 0.0f, -1.0f, -1.0f, 1.0f,  1.0f, 1.0f,
+        1.0f,  -1.0f, -1.0f, 1.0f, 1.0f, 1.0f,  1.0f,  -1.0f, 1.0f, 0.0f,
+        1.0f,  1.0f,  1.0f,  0.0f, 0.0f, 1.0f,  -1.0f, 1.0f,  0.0f, 1.0f,
+        -1.0f, -1.0f, -1.0f, 0.0f, 0.0f, -1.0f, -1.0f, 1.0f,  0.0f, 1.0f,
+        1.0f,  -1.0f, 1.0f,  1.0f, 1.0f, 1.0f,  -1.0f, -1.0f, 1.0f, 0.0f,
+        -1.0f, 1.0f,  -1.0f, 1.0f, 0.0f, -1.0f, 1.0f,  1.0f,  1.0f, 1.0f,
+        1.0f,  1.0f,  1.0f,  0.0f, 1.0f, 1.0f,  1.0f,  -1.0f, 0.0f, 0.0f,
+    };
 
-      // front
-      -1.0f, -1.0f, 1.0f, 0.0f, 1.0f,  // 0.0,  1.0,  0.0,  1.0,
-      1.0f, -1.0f, 1.0f, 1.0f, 1.0f,   // 0.0,  1.0,  0.0,  1.0,
-      1.0f, 1.0f, 1.0f, 1.0f, 0.0f,    // 0.0,  1.0,  0.0, 1.0,
-      -1.0f, 1.0f, 1.0f, 0.0f, 0.0f,   // 0.0,  1.0,  0.0,  1.0,
+    sg_buffer vbuf = sg_make_buffer(
+        &(sg_buffer_desc){.data = SG_RANGE(vertices), .label =
+    "cube-vertices"});
 
-      // left
-      -1.0f, -1.0f, -1.0f, 0.0f, 1.0f,  // 0.0,  0.0,  1.0,  1.0,
-      -1.0f, 1.0f, -1.0f, 0.0f, 0.0f,   // 0.0,  0.0,  1.0,  1.0,
-      -1.0f, 1.0f, 1.0f, 1.0f, 0.0f,    // 0.0,  0.0,  1.0, 1.0,
-      -1.0f, -1.0f, 1.0f, 1.0f, 1.0f,   // 0.0,  0.0,  1.0,  1.0,
-
-      // right
-      1.0f, -1.0f, -1.0f, 1.0f, 1.0f,  // 1.0,  0.5,  0.0,  1.0,
-      1.0f, 1.0f, -1.0f, 1.0f, 0.0f,   // 1.0,  0.5,  0.0,  1.0,
-      1.0f, 1.0f, 1.0f, 0.0f, 0.0f,    // 1.0,  0.5,  0.0, 1.0,
-      1.0f, -1.0f, 1.0f, 0.0f, 1.0f,   // 1.0,  0.5,  0.0,  1.0,
-
-      // bottom
-      -1.0f, -1.0f, -1.0f, 0.0f, 0.0f,  // 0.0,  0.5,  1.0,  1.0,
-      -1.0f, -1.0f, 1.0f, 0.0f, 1.0f,   // 0.0,  0.5,  1.0,  1.0,
-      1.0f, -1.0f, 1.0f, 1.0f, 1.0f,    // 0.0,  0.5,  1.0, 1.0,
-      1.0f, -1.0f, -1.0f, 1.0f, 0.0f,   // 0.0,  0.5,  1.0,  1.0,
-
-      // top
-      -1.0f, 1.0f, -1.0f, 1.0f, 0.0f,  // 1.0,  0.0,  0.5,  1.0,
-      -1.0f, 1.0f, 1.0f, 1.0f, 1.0f,   // 1.0,  0.0,  0.5,  1.0,
-      1.0f, 1.0f, 1.0f, 0.0f, 1.0f,    // 1.0,  0.0,  0.5, 1.0,
-      1.0f, 1.0f, -1.0f, 0.0f, 0.0f,   // 1.0,  0.0,  0.5,  1.0
-  };
-
-  sg_buffer vbuf = sg_make_buffer(
-      &(sg_buffer_desc){.data = SG_RANGE(vertices), .label = "cube-vertices"});
-
-  /* create an index buffer for the cube */
-  uint16_t indices[] = {
-      0,  1,  2,  0,  2,  3,   // back
-      6,  5,  4,  7,  6,  4,   // front
-      10, 11, 8,  9,  10, 8,   // left
-      14, 13, 12, 15, 14, 12,  // right
-      16, 17, 18, 16, 18, 19,  // bottom
-      22, 21, 20, 23, 22, 20   // top
-  };
+  uint16_t indices[] = {0,  1,  2,  0,  2,  3,  6,  5,  4,  7,  6,  4,
+                        10, 11, 8,  9,  10, 8,  14, 13, 12, 15, 14, 12,
+                        16, 17, 18, 16, 18, 19, 22, 21, 20, 23, 22, 20};
   sg_buffer ibuf =
       sg_make_buffer(&(sg_buffer_desc){.type = SG_BUFFERTYPE_INDEXBUFFER,
                                        .data = SG_RANGE(indices),
                                        .label = "cube-indices"});
 
-  /* create shader */
   sg_shader shd = sg_make_shader(textured_cube_shader_desc(sg_query_backend()));
 
-  /* create pipeline object */
   state.cube_pip = sg_make_pipeline(&(sg_pipeline_desc){
       .layout =
-          {/* test to provide buffer stride, but no attr offsets */
-           .buffers[0].stride = 20,
+          {.buffers[0].stride = 20,
            .attrs = {[ATTR_textured_vs_position].format =
                          SG_VERTEXFORMAT_FLOAT3,
                      [ATTR_textured_vs_texcoord0].format =
@@ -189,30 +172,23 @@ void init(void) {
           },
       .label = "cube-pipeline"});
 
-  /* setup resource bindings */
   state.cube_bind =
       (sg_bindings){.vertex_buffers[0] = vbuf, .index_buffer = ibuf};
+  */
 
-  /* Set up skybox */
+  // Set Up Skybox
   float skybox_vertices[] = {
-      // positions
-      -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f,
-      1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f,
-
-      -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f,
-      -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,
-
-      1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,
-      1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f,
-
-      -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
-      1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,
-
-      -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,
-      1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f,
-
-      -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f,
-      1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f};
+      -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,
+      -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f,
+      1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f,
+      -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,
+      -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+      -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,
+      1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f,
+      -1.0f, 1.0f,  -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,
+      1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f,
+      -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,
+      -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f};
 
   sg_buffer skybox_buffer = sg_make_buffer(&(sg_buffer_desc){
       .data = SG_RANGE(skybox_vertices), .label = "skybox-vertices"});
@@ -220,8 +196,8 @@ void init(void) {
   state.skybox_bind.vertex_buffers[0] = skybox_buffer;
   sg_image skybox_img_id = sg_alloc_image();
   state.skybox_bind.fs_images[SLOT_skybox_texture] = skybox_img_id;
-  sg_image cube_img_id = sg_alloc_image();
-  state.cube_bind.fs_images[SLOT_cube_texture] = cube_img_id;
+  // sg_image cube_img_id = sg_alloc_image();
+  // state.cube_bind.fs_images[SLOT_cube_texture] = cube_img_id;
   sg_image shape_img_id = sg_alloc_image();
   state.shape_bind.fs_images[SLOT_shape_texture] = shape_img_id;
 
@@ -261,50 +237,14 @@ void init(void) {
       .indices.buffer = SSHAPE_RANGE(shape_indices),
   };
 
-  // const hmm_mat4 box_transform = HMM_Translate(HMM_Vec3(-2.0f, 0.0f, -2.0f));
-  // const hmm_mat4 sphere_transform = HMM_Translate(HMM_Vec3(2.0f, 0.0f,
-  // -2.0f));
-  // const hmm_mat4 cylinder_transform =
-  //     HMM_Translate(HMM_Vec3(2.0f, 0.0f, -4.0f));
-  // const hmm_mat4 torus_transform = HMM_Translate(HMM_Vec3(-2.0f, 0.0f,
-  // -4.0f));
-
-  // buf = sshape_build_box(
-  //     &buf,
-  //     &(sshape_box_t){.width = 2.0f,
-  //                     .height = 2.0f,
-  //                     .depth = 2.0f,
-  //                     .tiles = 1,
-  //                     .random_colors = true,
-  //                     .transform =
-  //                     sshape_mat4(&box_transform.Elements[0][0])});
-  // buf = sshape_build_sphere(
-  //     &buf, &(sshape_sphere_t){
-  //               .merge = true,
-  //               .radius = 0.75f,
-  //               .slices = 36,
-  //               .stacks = 20,
-  //               .random_colors = true,
-  //               .transform = sshape_mat4(&sphere_transform.Elements[0][0])});
-  buf = sshape_build_cylinder(
-      &buf, &(sshape_cylinder_t){
-                .merge = true,
-                .radius = 1.0f,
-                .height = 1.0f,
-                .slices = 6,
-                .stacks = 1,
-                .random_colors = true,
-                // .transform = sshape_mat4(&cylinder_transform.Elements[0][0])
-            });
-  // buf = sshape_build_torus(
-  //     &buf, &(sshape_torus_t){
-  //               .merge = true,
-  //               .radius = 0.75f,
-  //               .ring_radius = 0.3f,
-  //               .rings = 36,
-  //               .sides = 18,
-  //               .random_colors = true,
-  //               .transform = sshape_mat4(&torus_transform.Elements[0][0])});
+  buf = sshape_build_cylinder(&buf, &(sshape_cylinder_t){
+                                        .merge = true,
+                                        .radius = 1.0f,
+                                        .height = 1.0f,
+                                        .slices = 6,
+                                        .stacks = 1,
+                                        .random_colors = true,
+                                    });
 
   state.shape_elems = sshape_element_range(&buf);
   sg_buffer_desc vbuf_desc = sshape_vertex_buffer_desc(&buf);
@@ -316,7 +256,7 @@ void init(void) {
 
   camera_set_up(&state.cam, HMM_Vec3(0.0f, 2.5f, 2.0f),
                 (&(cam_desc_t){
-                    .constrain_movement = true,
+                    // .constrain_movement = true,
                     .min_x = -3.5f,
                     .max_x = 7.5f,
                     .min_y = 1.01f,
@@ -325,18 +265,19 @@ void init(void) {
                     .max_z = 3.5f,
                 }));
 
+  state.imageLoadStartTime = stm_now();
   sfetch_send(&(sfetch_request_t){.path = "favicon-32x32.png",
                                   .callback = icon_fetch_callback,
                                   .buffer_ptr = favicon_buffer,
                                   .buffer_size = sizeof(favicon_buffer)});
 
-  load_image(&(image_request_t){.img_id = cube_img_id,
-                                .path = "container2.png",
-                                .buffer_ptr = state.texture_buffer,
-                                .buffer_size = sizeof(state.texture_buffer),
-                                .wrap_u = SG_WRAP_CLAMP_TO_EDGE,
-                                .wrap_v = SG_WRAP_CLAMP_TO_EDGE},
-             "cube-image");
+  // load_image(&(image_request_t){.img_id = cube_img_id,
+  //                               .path = "container2.png",
+  //                               .buffer_ptr = state.texture_buffer,
+  //                               .buffer_size = sizeof(state.texture_buffer),
+  //                               .wrap_u = SG_WRAP_CLAMP_TO_EDGE,
+  //                               .wrap_v = SG_WRAP_CLAMP_TO_EDGE},
+  //            "cube-image");
 
   load_image(
       &(image_request_t){.img_id = shape_img_id,
@@ -356,7 +297,9 @@ void init(void) {
                                     .path_back = "back.jpg",
                                     .buffer_ptr = state.cubemap_buffer,
                                     .buffer_offset = 1024 * 1024,
-                                    .fail_callback = fail_callback});
+                                    .fail_callback = fail_callback,
+                                    .success_callback = success_callback});
+  state.initTime = stm_diff(stm_now(), initStartTime);
 }
 
 void frame(void) {
@@ -375,9 +318,30 @@ void frame(void) {
   camera_update(&state.cam, deltaTime);
 
   sdtx_canvas(w * 0.5f, h * 0.5f);
-  sdtx_origin(2, 2);
+  // sdtx_canvas(w, h);
+  // sdtx_origin(2, 2);
+  sdtx_origin(1, 1);
+  sdtx_color3f(1.0f, 0.2f, 0.2f);
   sdtx_printf("CamPos: (%.2f, %.2f, %.2f)\n", state.cam.position.X,
               state.cam.position.Y, state.cam.position.Z);
+
+  if (state.initTime > 0) {
+    sdtx_move_y(1);
+    sdtx_printf("Init Time: %.2f\n", (float)stm_ms(state.initTime));
+  }
+  if (state.timeToLoadImages > 0) {
+    sdtx_move_y(1);
+    sdtx_printf("Image Load Time: %.2f\n",
+                (float)stm_ms(state.timeToLoadImages));
+  }
+  if (state.renderTime > 0) {
+    sdtx_move_y(1);
+    sdtx_printf("Render Time: %.2f\n", (float)stm_ms(state.renderTime));
+  }
+  sdtx_move_y(2);
+  sdtx_printf("Frame Time: %.2f (%d FPS)\n",
+              (float)stm_ms(stm_diff(currTime, state.lastFrameTime)),
+              (int)(1 / deltaTime));
 
   if (state.show_mem_ui) {
     sdtx_move_y(2);
@@ -388,14 +352,16 @@ void frame(void) {
 
   hmm_mat4 view = camera_get_view_matrix(&state.cam);
   hmm_mat4 projection =
-      HMM_Perspective(camera_get_fov(&state.cam), aspect, 0.1f, 100.0f);
+      HMM_Perspective(camera_get_fov(&state.cam), aspect, 0.1f, 1000.0f);
+
+  uint64_t renderStartTime = stm_now();
+  sg_begin_default_pass(&state.pass_action, sapp_width(), sapp_height());
 
   // DRAW CUBE
   // vs_params_t vs_params;
   // vs_params.mvp =
   // HMM_MultiplyMat4(HMM_MultiplyMat4(projection, view), HMM_Mat4d(1.0f));
 
-  sg_begin_default_pass(&state.pass_action, sapp_width(), sapp_height());
   // sg_apply_pipeline(state.cube_pip);
   // sg_apply_bindings(&state.cube_bind);
   // sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_vs_params, &SG_RANGE(vs_params));
@@ -406,8 +372,8 @@ void frame(void) {
   sg_apply_pipeline(state.shape_pip);
   sg_apply_bindings(&state.shape_bind);
   shape_params.viewproj = HMM_MultiplyMat4(projection, view);
-  for (int i = 0; i < 5; i++) {
-    for (int j = 0; j < 5; j++) {
+  for (int i = -50; i < 50; i++) {
+    for (int j = -50; j < 50; j++) {
       float x = ((float)i + j * 0.5f - j / 2) * (2.0f * 0.866025404f);
       float z = (float)j * 1.5f;
 
@@ -443,6 +409,7 @@ void frame(void) {
   }
   sg_end_pass();
   sg_commit();
+  state.renderTime = stm_diff(stm_now(), renderStartTime);
 }
 
 void event(const sapp_event* e) {
@@ -484,10 +451,10 @@ void cleanup(void) {
 sapp_desc sokol_main(int argc, char* argv[]) {
   (void)argc;
   (void)argv;
-  char app_title[21];
-  sprintf(app_title, "App Version %s.%s.%s", PROJECT_VERSION_MAJOR,
-          PROJECT_VERSION_MINOR, PROJECT_VERSION_PATCH);
-  app_title[20] = '\0';
+  // char app_title[21];
+  // sprintf(app_title, "App Version %s.%s.%s", PROJECT_VERSION_MAJOR,
+  //         PROJECT_VERSION_MINOR, PROJECT_VERSION_PATCH);
+  // app_title[20] = '\0';
   return (sapp_desc){
       .init_cb = init,
       .frame_cb = frame,
@@ -496,7 +463,7 @@ sapp_desc sokol_main(int argc, char* argv[]) {
       .width = SCREEN_WIDTH,
       .height = SCREEN_HEIGHT,
       .gl_force_gles2 = false,
-      .window_title = app_title,
+      .window_title = "app_title",
       .icon.sokol_default = false,
   };
 }
