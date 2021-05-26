@@ -35,24 +35,23 @@ static struct {
   sg_pass_action pass_action;
   sshape_element_range_t shape_elems;
   _cubemap_request_t cubemap_req;
+  _arraytex_request_t arraytex_req;
   // uint8_t texture_buffer[1024 * 1024];
   uint8_t cubemap_buffer[6 * 1024 * 1024];
   uint8_t shape_texture_buffer[6 * 256 * 1024];
+  uint8_t arraytex_buffer[ARRAYTEX_BUFFER_SIZE];
   camera_t cam;
   hmm_vec2 last_mouse;
   bool first_mouse;
   bool show_debug_ui;
   bool show_mem_ui;
   uint64_t lastFrameTime;
-  uint64_t timeToLoadImages;
+  uint64_t timeToLoadCubemap;
+  uint64_t timeToLoadArrayTextures;
   uint64_t imageLoadStartTime;
   uint64_t renderTime;
   uint64_t initTime;
 } state;
-
-const int SCREEN_WIDTH = 1280;
-const int SCREEN_HEIGHT = 768;
-const float VELOCITY = 25.0f;
 
 static void fail_callback() {
   state.pass_action = (sg_pass_action){
@@ -60,8 +59,11 @@ static void fail_callback() {
                     .value = (sg_color){1.0f, 0.0f, 0.0f, 1.0f}}};
 }
 
-static void success_callback() {
-  state.timeToLoadImages = stm_diff(stm_now(), state.imageLoadStartTime);
+static void cube_success_callback() {
+  state.timeToLoadCubemap = stm_diff(stm_now(), state.imageLoadStartTime);
+}
+static void arraytex_success_callback() {
+  state.timeToLoadArrayTextures = stm_diff(stm_now(), state.imageLoadStartTime);
 }
 
 void load_image(const image_request_t* request, const char* image_label) {
@@ -77,6 +79,27 @@ void load_image(const image_request_t* request, const char* image_label) {
                                   .buffer_size = request->buffer_size,
                                   .user_data_ptr = &req_data,
                                   .user_data_size = sizeof(req_data)});
+}
+
+void load_array_texture(arraytex_request_t* request) {
+  state.arraytex_req =
+      (_arraytex_request_t){.img_id = request->img_id,
+                            .buffer = request->buffer_ptr,
+                            .buffer_offset = request->buffer_offset,
+                            .fail_callback = request->fail_callback,
+                            .success_callback = request->success_callback};
+
+  for (int i = 0; i < ARRAYTEX_COUNT; ++i) {
+    _arraytex_request_instance_t req_inst = {.index = i,
+                                             .request = &state.arraytex_req};
+    sfetch_send(&(sfetch_request_t){
+        .path = request->paths[i],
+        .callback = arraytex_fetch_callback,
+        .buffer_ptr = request->buffer_ptr + (i * request->buffer_offset),
+        .buffer_size = request->buffer_offset,
+        .user_data_ptr = &req_inst,
+        .user_data_size = sizeof(req_inst)});
+  }
 }
 
 void load_cubemap(cubemap_request_t* request) {
@@ -116,7 +139,8 @@ void init(void) {
   state.renderTime = 0;
   state.initTime = 0;
   state.imageLoadStartTime = 0;
-  state.timeToLoadImages = 0;
+  state.timeToLoadCubemap = 0;
+  state.timeToLoadArrayTextures = 0;
   state.pass_action =
       (sg_pass_action){.colors[0] = {.action = SG_ACTION_CLEAR,
                                      .value = {0.1f, 0.15f, 0.2f, 1.0f}}};
@@ -200,6 +224,8 @@ void init(void) {
   // state.cube_bind.fs_images[SLOT_cube_texture] = cube_img_id;
   sg_image shape_img_id = sg_alloc_image();
   state.shape_bind.fs_images[SLOT_shape_texture] = shape_img_id;
+  sg_image arraytex_img_id = sg_alloc_image();
+  state.shape_bind.fs_images[SLOT_shape_arraytex] = arraytex_img_id;
 
   state.skybox_pip = sg_make_pipeline(&(sg_pipeline_desc){
       .shader = sg_make_shader(skybox_shader_desc(sg_query_backend())),
@@ -288,6 +314,19 @@ void init(void) {
                          .wrap_v = SG_WRAP_REPEAT},
       "shape-texture");
 
+  const char* arraytex_paths[ARRAYTEX_COUNT] = {
+      "grass.png", "mud.png", "rock.png", "sand.png", "snow.png", "stone.png",
+  };
+
+  load_array_texture(
+      &(arraytex_request_t){.img_id = arraytex_img_id,
+                            .paths = arraytex_paths,
+                            .image_count = ARRAYTEX_COUNT,
+                            .buffer_ptr = state.arraytex_buffer,
+                            .buffer_offset = ARRAYTEX_OFFSET,
+                            .fail_callback = fail_callback,
+                            .success_callback = arraytex_success_callback});
+
   load_cubemap(&(cubemap_request_t){.img_id = skybox_img_id,
                                     .path_right = "right.jpg",
                                     .path_left = "left.jpg",
@@ -298,7 +337,7 @@ void init(void) {
                                     .buffer_ptr = state.cubemap_buffer,
                                     .buffer_offset = 1024 * 1024,
                                     .fail_callback = fail_callback,
-                                    .success_callback = success_callback});
+                                    .success_callback = cube_success_callback});
   state.initTime = stm_diff(stm_now(), initStartTime);
 }
 
@@ -329,10 +368,15 @@ void frame(void) {
     sdtx_move_y(1);
     sdtx_printf("Init Time: %.2f\n", (float)stm_ms(state.initTime));
   }
-  if (state.timeToLoadImages > 0) {
+  if (state.timeToLoadCubemap > 0) {
     sdtx_move_y(1);
-    sdtx_printf("Image Load Time: %.2f\n",
-                (float)stm_ms(state.timeToLoadImages));
+    sdtx_printf("Cubemap Load Time: %.2f\n",
+                (float)stm_ms(state.timeToLoadCubemap));
+  }
+  if (state.timeToLoadArrayTextures > 0) {
+    sdtx_move_y(1);
+    sdtx_printf("Arraytex Load Time: %.2f\n",
+                (float)stm_ms(state.timeToLoadArrayTextures));
   }
   if (state.renderTime > 0) {
     sdtx_move_y(1);
@@ -364,8 +408,8 @@ void frame(void) {
 
   // sg_apply_pipeline(state.cube_pip);
   // sg_apply_bindings(&state.cube_bind);
-  // sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_vs_params, &SG_RANGE(vs_params));
-  // sg_draw(0, 36, 1);
+  // sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_vs_params,
+  // &SG_RANGE(vs_params)); sg_draw(0, 36, 1);
 
   // DRAW SHAPES
   textured_shape_vs_params_t shape_params;
@@ -378,6 +422,7 @@ void frame(void) {
       float z = (float)j * 1.5f;
 
       shape_params.model = HMM_Translate(HMM_Vec3(x - 2, 0.0f, -z));
+      shape_params.texIndex = floorf(z);
 
       sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_shape_vs_params,
                         &SG_RANGE(shape_params));

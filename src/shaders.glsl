@@ -81,6 +81,7 @@ void main() {
 uniform textured_shape_vs_params {
     mat4 model;
     mat4 viewproj;
+    float texIndex;
 };
 
 layout(location=0) in vec4 position;
@@ -91,6 +92,7 @@ layout(location=3) in vec4 color0;
 out vec4 color;
 //out vec3 out_normal;
 out vec2 out_texcoord;
+out vec3 array_texcoord;
 out vec3 world_position;
 
 void main() {
@@ -98,6 +100,7 @@ void main() {
     color = color0;    
     //out_normal = normal;
     out_texcoord = texcoord;
+    array_texcoord = vec3(texcoord, texIndex);
     world_position = (model * position).xyz;
 }
 @end
@@ -120,10 +123,12 @@ void main() {
 in vec4 color;
 //in vec3 out_normal;
 in vec2 out_texcoord;
+in vec3 array_texcoord;
 in vec3 world_position;
 out vec4 frag_color;
 
 uniform sampler2D shape_texture;
+uniform sampler2DArray shape_arraytex;
 
 void main() {
     //vec3 norm = normalize(out_normal);
@@ -131,6 +136,7 @@ void main() {
     //frag_color = color * vec4(norm, 0.5) * vec4(redo, 1.0, 0.5);
     //frag_color = color;
     frag_color = texture(shape_texture, (world_position * 0.05).xz);
+    frag_color = texture(shape_arraytex, array_texcoord);
 }
 @end
 

@@ -4,6 +4,7 @@
 #include "types.h"
 #include "sokol_app.h"
 #include "stb/stb_image.h"
+#include <string.h>
 
 static void icon_fetch_callback(const sfetch_response_t* response) {
   if (response->fetched) {
@@ -53,6 +54,115 @@ static void image_fetch_callback(const sfetch_response_t* response) {
     }
   } else if (response->failed) {
     req_data.fail_callback();
+  }
+}
+
+static bool _load_arraytex(_arraytex_request_t* request) {
+  const int desired_channels = 4;
+  int img_widths[ARRAYTEX_COUNT], img_heights[ARRAYTEX_COUNT];
+  stbi_uc* pixels_ptrs[ARRAYTEX_COUNT];
+  sg_image_data img_data;
+  uint32_t* pixel_data;
+  uint32_t pixel_data_size = 0;
+  for (int i = 0; i < ARRAYTEX_COUNT; ++i) {
+    pixel_data_size += request->fetched_sizes[i];
+  }
+
+  pixel_data = (uint32_t*)malloc(pixel_data_size * sizeof(uint32_t));
+  uint32_t pixel_data_ptr = 0;
+
+  for (int i = 0; i < ARRAYTEX_COUNT; i++) {
+    int num_channel;
+    // pixels_ptrs[i] =
+    stbi_uc* img_ptr =
+        stbi_load_from_memory(request->buffer + (i * request->buffer_offset),
+                              request->fetched_sizes[i], &img_widths[i],
+                              &img_heights[i], &num_channel, desired_channels);
+    memcpy(pixel_data + pixel_data_ptr, img_ptr, request->fetched_sizes[i]);
+    pixel_data_ptr += request->fetched_sizes[i];
+  }
+  img_data.subimage[0][0] =
+      (sg_range){.ptr = pixel_data, .size = pixel_data_size};
+
+  /*
+    static uint32_t pixels[3][16][16];
+    for (int layer = 0, even_odd = 0; layer < 16; layer++) {
+      for (int y = 0; y < 16; y++, even_odd++) {
+        for (int x = 0; x < 16; x++, even_odd++) {
+          if (even_odd & 1) {
+            switch (layer) {
+              case 0:
+                pixels[layer][y][x] = 0x000000FF;
+                break;
+              case 1:
+                pixels[layer][y][x] = 0x0000FF00;
+                break;
+              case 2:
+                pixels[layer][y][x] = 0x00FF0000;
+                break;
+            }
+          } else {
+            pixels[layer][y][x] = 0;
+          }
+        }
+      }
+    }
+
+    img_data.subimage[0][0] = SG_RANGE(pixels);
+  */
+
+  bool valid = img_heights[0] > 0 && img_widths[0] > 0;
+
+  for (int i = 1; i < ARRAYTEX_COUNT; i++) {
+    if (img_widths[i] != img_widths[0] || img_heights[i] != img_heights[0]) {
+      valid = false;
+      break;
+    }
+  }
+
+  if (valid) {
+    sg_init_image(request->img_id,
+                  &(sg_image_desc){.type = SG_IMAGETYPE_ARRAY,
+                                   .width = img_widths[0],
+                                   .height = img_heights[0],
+                                   .num_slices = ARRAYTEX_COUNT,
+                                   .pixel_format = SG_PIXELFORMAT_RGBA8,
+                                   .min_filter = SG_FILTER_LINEAR,
+                                   .mag_filter = SG_FILTER_LINEAR,
+                                   .data = img_data,
+                                   .label = "arraytex-image"});
+  }
+
+  for (int i = 0; i < ARRAYTEX_COUNT; i++) {
+    stbi_image_free(pixels_ptrs[i]);
+  }
+
+  return valid;
+}
+
+static void arraytex_fetch_callback(const sfetch_response_t* response) {
+  _arraytex_request_instance_t req_inst =
+      *(_arraytex_request_instance_t*)response->user_data;
+  _arraytex_request_t* request = req_inst.request;
+
+  if (response->fetched) {
+    request->fetched_sizes[req_inst.index] = response->fetched_size;
+    ++request->finished_requests;
+  } else if (response->failed) {
+    request->failed = true;
+    ++request->finished_requests;
+  }
+
+  if (request->finished_requests == ARRAYTEX_COUNT) {
+    if (!request->failed) {
+      request->failed = !_load_arraytex(request);
+    }
+
+    if (request->failed) {
+      request->fail_callback();
+    } else {
+      request->success_callback();
+    }
   }
 }
 

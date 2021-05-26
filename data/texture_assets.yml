@@ -4,4 +4,9 @@ options:
 files:
   - 'container2.png'
   - 'container2_specular.png'
+  - 'grass.png'
+  - 'mud.png'
+  - 'rock.png'
   - 'sand.png'
+  - 'snow.png'
+  - 'stone.png'
