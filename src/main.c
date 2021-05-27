@@ -10,7 +10,7 @@
 #include "sokol_fetch.h"
 #include "sokol_shape.h"
 #include "sokol_glue.h"
-// #include "cdbgui/cdbgui.h"
+#include "cdbgui/cdbgui.h"
 #include "HandmadeMath/HandmadeMath.h"
 #include "shaders.glsl.h"
 
@@ -39,7 +39,8 @@ static struct {
   // uint8_t texture_buffer[1024 * 1024];
   uint8_t cubemap_buffer[6 * 1024 * 1024];
   uint8_t shape_texture_buffer[6 * 256 * 1024];
-  uint8_t arraytex_buffer[ARRAYTEX_BUFFER_SIZE];
+  uint8_t arraytex_load_buffer[ARRAYTEX_IMAGE_BUFFER_SIZE];
+  uint32_t arraytex_buffer[ARRAYTEX_IMAGE_BUFFER_SIZE];
   camera_t cam;
   hmm_vec2 last_mouse;
   bool first_mouse;
@@ -85,6 +86,7 @@ void load_array_texture(arraytex_request_t* request) {
   state.arraytex_req =
       (_arraytex_request_t){.img_id = request->img_id,
                             .buffer = request->buffer_ptr,
+                            .texture_buffer_ptr = request->texture_buffer_ptr,
                             .buffer_offset = request->buffer_offset,
                             .fail_callback = request->fail_callback,
                             .success_callback = request->success_callback};
@@ -147,7 +149,7 @@ void init(void) {
   sdtx_setup(&(sdtx_desc_t){
       .fonts[0] = sdtx_font_oric(),
   });
-  // __cdbgui_setup(sapp_sample_count());
+  __cdbgui_setup(sapp_sample_count());
 
   /*
     float vertices[] = {
@@ -318,14 +320,15 @@ void init(void) {
       "grass.png", "mud.png", "rock.png", "sand.png", "snow.png", "stone.png",
   };
 
-  load_array_texture(
-      &(arraytex_request_t){.img_id = arraytex_img_id,
-                            .paths = arraytex_paths,
-                            .image_count = ARRAYTEX_COUNT,
-                            .buffer_ptr = state.arraytex_buffer,
-                            .buffer_offset = ARRAYTEX_OFFSET,
-                            .fail_callback = fail_callback,
-                            .success_callback = arraytex_success_callback});
+  load_array_texture(&(arraytex_request_t){
+      .img_id = arraytex_img_id,
+      .paths = arraytex_paths,
+      .image_count = ARRAYTEX_COUNT,
+      .buffer_ptr = state.arraytex_load_buffer,
+      .texture_buffer_ptr = (uint8_t*)state.arraytex_buffer,
+      .buffer_offset = ARRAYTEX_ARRAY_IMAGE_OFFSET,
+      .fail_callback = fail_callback,
+      .success_callback = arraytex_success_callback});
 
   load_cubemap(&(cubemap_request_t){.img_id = skybox_img_id,
                                     .path_right = "right.jpg",
@@ -422,7 +425,8 @@ void frame(void) {
       float z = (float)j * 1.5f;
 
       shape_params.model = HMM_Translate(HMM_Vec3(x - 2, 0.0f, -z));
-      shape_params.texIndex = floorf(z);
+      int iZ = abs((int)z % ARRAYTEX_COUNT);
+      shape_params.texIndex = floorf((float)iZ);
 
       sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_shape_vs_params,
                         &SG_RANGE(shape_params));
@@ -450,7 +454,7 @@ void frame(void) {
   sdtx_draw();
   // }
   if (state.show_debug_ui) {
-    // __cdbgui_draw();
+    __cdbgui_draw();
   }
   sg_end_pass();
   sg_commit();
@@ -458,7 +462,7 @@ void frame(void) {
 }
 
 void event(const sapp_event* e) {
-  // __cdbgui_event(e);
+  __cdbgui_event(e);
   if (e->type == SAPP_EVENTTYPE_KEY_DOWN) {
     if (e->key_code == SAPP_KEYCODE_ESCAPE) {
       sapp_request_quit();
@@ -487,7 +491,7 @@ void event(const sapp_event* e) {
 }
 
 void cleanup(void) {
-  // __cdbgui_shutdown();
+  __cdbgui_shutdown();
   sdtx_shutdown();
   sfetch_shutdown();
   sg_shutdown();

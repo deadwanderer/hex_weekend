@@ -8,8 +8,11 @@ const int SCREEN_WIDTH = 1280;
 const int SCREEN_HEIGHT = 768;
 const float VELOCITY = 25.0f;
 #define ARRAYTEX_COUNT (6)
-#define ARRAYTEX_OFFSET (256 * 1024)
-#define ARRAYTEX_BUFFER_SIZE (ARRAYTEX_COUNT * ARRAYTEX_OFFSET)
+#define ARRAYTEX_IMAGE_WIDTH (512)
+#define ARRAYTEX_IMAGE_HEIGHT (512)
+#define ARRAYTEX_IMAGE_PIXELS (ARRAYTEX_IMAGE_WIDTH * ARRAYTEX_IMAGE_HEIGHT)
+#define ARRAYTEX_ARRAY_IMAGE_OFFSET (ARRAYTEX_IMAGE_PIXELS)
+#define ARRAYTEX_IMAGE_BUFFER_SIZE (ARRAYTEX_COUNT * ARRAYTEX_IMAGE_PIXELS)
 
 typedef void (*fail_callback_t)();
 typedef void (*cubemap_success_callback_t)();
@@ -29,6 +32,7 @@ typedef struct arraytex_request_t {
   const char** paths;
   uint32_t image_count;
   sg_image img_id;
+  uint8_t* texture_buffer_ptr;
   uint8_t* buffer_ptr;
   uint32_t buffer_offset;
   fail_callback_t fail_callback;
@@ -37,6 +41,7 @@ typedef struct arraytex_request_t {
 
 typedef struct _arraytex_request_t {
   sg_image img_id;
+  uint8_t* texture_buffer_ptr;
   uint8_t* buffer;
   int buffer_offset;
   int fetched_sizes[ARRAYTEX_COUNT];

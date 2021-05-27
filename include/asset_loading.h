@@ -60,29 +60,23 @@ static void image_fetch_callback(const sfetch_response_t* response) {
 static bool _load_arraytex(_arraytex_request_t* request) {
   const int desired_channels = 4;
   int img_widths[ARRAYTEX_COUNT], img_heights[ARRAYTEX_COUNT];
-  stbi_uc* pixels_ptrs[ARRAYTEX_COUNT];
   sg_image_data img_data;
-  uint32_t* pixel_data;
-  uint32_t pixel_data_size = 0;
-  for (int i = 0; i < ARRAYTEX_COUNT; ++i) {
-    pixel_data_size += request->fetched_sizes[i];
-  }
-
-  pixel_data = (uint32_t*)malloc(pixel_data_size * sizeof(uint32_t));
-  uint32_t pixel_data_ptr = 0;
 
   for (int i = 0; i < ARRAYTEX_COUNT; i++) {
     int num_channel;
-    // pixels_ptrs[i] =
     stbi_uc* img_ptr =
         stbi_load_from_memory(request->buffer + (i * request->buffer_offset),
                               request->fetched_sizes[i], &img_widths[i],
                               &img_heights[i], &num_channel, desired_channels);
-    memcpy(pixel_data + pixel_data_ptr, img_ptr, request->fetched_sizes[i]);
-    pixel_data_ptr += request->fetched_sizes[i];
+    memcpy(request->texture_buffer_ptr +
+               (i * ARRAYTEX_ARRAY_IMAGE_OFFSET * sizeof(uint32_t)),
+           img_ptr,
+           img_widths[i] * img_heights[i] * desired_channels * sizeof(stbi_uc));
+    stbi_image_free(img_ptr);
   }
   img_data.subimage[0][0] =
-      (sg_range){.ptr = pixel_data, .size = pixel_data_size};
+      (sg_range){.ptr = request->texture_buffer_ptr,
+                 .size = ARRAYTEX_IMAGE_BUFFER_SIZE * sizeof(uint32_t)};
 
   /*
     static uint32_t pixels[3][16][16];
@@ -114,7 +108,9 @@ static bool _load_arraytex(_arraytex_request_t* request) {
   bool valid = img_heights[0] > 0 && img_widths[0] > 0;
 
   for (int i = 1; i < ARRAYTEX_COUNT; i++) {
-    if (img_widths[i] != img_widths[0] || img_heights[i] != img_heights[0]) {
+    if (img_widths[i] != img_widths[0] || img_heights[i] != img_heights[0] ||
+        img_widths[i] != ARRAYTEX_IMAGE_WIDTH ||
+        img_heights[i] != ARRAYTEX_IMAGE_HEIGHT) {
       valid = false;
       break;
     }
@@ -131,10 +127,6 @@ static bool _load_arraytex(_arraytex_request_t* request) {
                                    .mag_filter = SG_FILTER_LINEAR,
                                    .data = img_data,
                                    .label = "arraytex-image"});
-  }
-
-  for (int i = 0; i < ARRAYTEX_COUNT; i++) {
-    stbi_image_free(pixels_ptrs[i]);
   }
 
   return valid;
