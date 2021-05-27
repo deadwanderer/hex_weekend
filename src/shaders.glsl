@@ -88,6 +88,7 @@ layout(location=0) in vec4 position;
 layout(location=1) in vec3 normal;
 layout(location=2) in vec2 texcoord;
 layout(location=3) in vec4 color0;
+layout(location=4) in vec3 inst_pos;
 
 out vec4 color;
 //out vec3 out_normal;
@@ -96,7 +97,8 @@ out vec3 array_texcoord;
 out vec3 world_position;
 
 void main() {
-    gl_Position = viewproj * model * position;
+    vec4 worldpos = (position+vec4(inst_pos, 1.0));
+    gl_Position = viewproj * model * worldpos;
     color = color0;    
     //out_normal = normal;
     out_texcoord = texcoord;
