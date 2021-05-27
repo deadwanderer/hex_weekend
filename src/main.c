@@ -1,7 +1,8 @@
 #define _CRT_SECURE_NO_WARNINGS (1)
-//------------------------------------------------------------------------------
-//  clear-sapp.c
-//------------------------------------------------------------------------------
+
+#include <stdlib.h>
+#include <time.h>
+
 #include "sokol_memtrack.h"
 #include "sokol_gfx.h"
 #include "sokol_app.h"
@@ -10,7 +11,7 @@
 #include "sokol_fetch.h"
 #include "sokol_shape.h"
 #include "sokol_glue.h"
-// #include "cdbgui/cdbgui.h"
+#include "cdbgui/cdbgui.h"
 #include "HandmadeMath/HandmadeMath.h"
 #include "shaders.glsl.h"
 
@@ -22,6 +23,10 @@
 
 #include "Camera.h"
 // #include "hex.h"
+
+#define NUM_CELLS_WIDE 100
+#define NUM_CELLS_LONG 100
+#define NUM_CELLS (NUM_CELLS_WIDE * NUM_CELLS_LONG)
 
 static uint8_t favicon_buffer[32 * 32 * 4];
 
@@ -123,7 +128,7 @@ void init(void) {
   sdtx_setup(&(sdtx_desc_t){
       .fonts[0] = sdtx_font_oric(),
   });
-  // __cdbgui_setup(sapp_sample_count());
+  __cdbgui_setup(sapp_sample_count());
 
   /*
     float vertices[] = {
@@ -217,13 +222,27 @@ void init(void) {
       .label = "skybox-pipeline"});
 
   // SHAPES
+
+  hmm_vec3 shape_pos[NUM_CELLS];
+  srand((unsigned int)time(NULL));
+  for (int z = 0; z < NUM_CELLS_LONG; ++z) {
+    for (int x = 0; x < NUM_CELLS_WIDE; ++x) {
+      float y = (float)(rand() % (11) - 5) / 25.0f;
+      shape_pos[NUM_CELLS_WIDE * z + x] =
+          HMM_Vec3((float)(x - 50), y, (float)(z - 50));
+    }
+  }
+
   state.shape_pip = sg_make_pipeline(&(sg_pipeline_desc){
       .shader = sg_make_shader(textured_shape_shader_desc(sg_query_backend())),
       .layout = {.buffers[0] = sshape_buffer_layout_desc(),
+                 .buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE,
                  .attrs = {[0] = sshape_position_attr_desc(),
                            [1] = sshape_normal_attr_desc(),
                            [2] = sshape_texcoord_attr_desc(),
-                           [3] = sshape_color_attr_desc()}},
+                           [3] = sshape_color_attr_desc(),
+                           [4] = {.format = SG_VERTEXFORMAT_FLOAT3,
+                                  .buffer_index = 1}}},
       .index_type = SG_INDEXTYPE_UINT16,
       .cull_mode = SG_CULLMODE_NONE,
       .depth = {.compare = SG_COMPAREFUNC_LESS_EQUAL, .write_enabled = true},
@@ -251,7 +270,10 @@ void init(void) {
   vbuf_desc.label = "shape-vertices";
   sg_buffer_desc ibuf_desc = sshape_index_buffer_desc(&buf);
   ibuf_desc.label = "shape-indices";
+  sg_buffer_desc instbuf_desc =
+      (sg_buffer_desc){.data = SG_RANGE(shape_pos), .label = "instance-data"};
   state.shape_bind.vertex_buffers[0] = sg_make_buffer(&vbuf_desc);
+  state.shape_bind.vertex_buffers[1] = sg_make_buffer(&instbuf_desc);
   state.shape_bind.index_buffer = sg_make_buffer(&ibuf_desc);
 
   camera_set_up(&state.cam, HMM_Vec3(0.0f, 2.5f, 2.0f),
@@ -372,19 +394,21 @@ void frame(void) {
   sg_apply_pipeline(state.shape_pip);
   sg_apply_bindings(&state.shape_bind);
   shape_params.viewproj = HMM_MultiplyMat4(projection, view);
-  for (int i = -50; i < 50; i++) {
-    for (int j = -50; j < 50; j++) {
-      float x = ((float)i + j * 0.5f - j / 2) * (2.0f * 0.866025404f);
-      float z = (float)j * 1.5f;
+  shape_params.model = HMM_Mat4d(1.0);
+  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_shape_vs_params,
+                    &SG_RANGE(shape_params));
+  sg_draw(state.shape_elems.base_element, state.shape_elems.num_elements,
+          NUM_CELLS);
 
-      shape_params.model = HMM_Translate(HMM_Vec3(x - 2, 0.0f, -z));
+  // for (int i = -50; i < 50; i++) {
+  //   for (int j = -50; j < 50; j++) {
+  //     float x = ((float)i + j * 0.5f - j / 2) * (2.0f * 0.866025404f);
+  //     float z = (float)j * 1.5f;
 
-      sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_shape_vs_params,
-                        &SG_RANGE(shape_params));
-      sg_draw(state.shape_elems.base_element, state.shape_elems.num_elements,
-              1);
-    }
-  }
+  //     shape_params.model = HMM_Translate(HMM_Vec3(x - 2, 0.0f, -z));
+
+  //   }
+  // }
 
   // DRAW SKYBOX
   view.Elements[3][0] = 0.0f;
@@ -405,7 +429,7 @@ void frame(void) {
   sdtx_draw();
   // }
   if (state.show_debug_ui) {
-    // __cdbgui_draw();
+    __cdbgui_draw();
   }
   sg_end_pass();
   sg_commit();
@@ -413,7 +437,7 @@ void frame(void) {
 }
 
 void event(const sapp_event* e) {
-  // __cdbgui_event(e);
+  __cdbgui_event(e);
   if (e->type == SAPP_EVENTTYPE_KEY_DOWN) {
     if (e->key_code == SAPP_KEYCODE_ESCAPE) {
       sapp_request_quit();
@@ -442,7 +466,7 @@ void event(const sapp_event* e) {
 }
 
 void cleanup(void) {
-  // __cdbgui_shutdown();
+  __cdbgui_shutdown();
   sdtx_shutdown();
   sfetch_shutdown();
   sg_shutdown();
@@ -464,6 +488,7 @@ sapp_desc sokol_main(int argc, char* argv[]) {
       .height = SCREEN_HEIGHT,
       .gl_force_gles2 = false,
       .window_title = "app_title",
+      .sample_count = 4,
       .icon.sokol_default = false,
   };
 }
