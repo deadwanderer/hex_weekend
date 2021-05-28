@@ -27,17 +27,26 @@
 #define NUM_CELLS_WIDE 100
 #define NUM_CELLS_LONG 100
 #define NUM_CELLS (NUM_CELLS_WIDE * NUM_CELLS_LONG)
+#define SHADOW_MAP_RESOLUTION 1024
 
 static uint8_t favicon_buffer[32 * 32 * 4];
 
 static struct {
-  // sg_pipeline cube_pip;
-  // sg_bindings cube_bind;
-  sg_pipeline skybox_pip;
-  sg_bindings skybox_bind;
-  sg_pipeline shape_pip;
-  sg_bindings shape_bind;
-  sg_pass_action pass_action;
+  struct {
+    // sg_pipeline cube_pip;
+    // sg_bindings cube_bind;
+    sg_pipeline skybox_pip;
+    sg_bindings skybox_bind;
+    sg_pipeline shape_pip;
+    sg_bindings shape_bind;
+    sg_pass_action pass_action;
+  } deflt;
+  struct {
+    sg_pass_action pass_action;
+    sg_pass pass;
+    sg_pipeline pip;
+    sg_bindings bind;
+  } shadows;
   sshape_element_range_t shape_elems;
   _cubemap_request_t cubemap_req;
   _arraytex_request_t arraytex_req;
@@ -60,7 +69,7 @@ static struct {
 } state;
 
 static void fail_callback() {
-  state.pass_action = (sg_pass_action){
+  state.deflt.pass_action = (sg_pass_action){
       .colors[0] = {.action = SG_ACTION_CLEAR,
                     .value = (sg_color){1.0f, 0.0f, 0.0f, 1.0f}}};
 }
@@ -148,14 +157,55 @@ void init(void) {
   state.imageLoadStartTime = 0;
   state.timeToLoadCubemap = 0;
   state.timeToLoadArrayTextures = 0;
-  state.pass_action =
+  state.deflt.pass_action =
       (sg_pass_action){.colors[0] = {.action = SG_ACTION_CLEAR,
                                      .value = {0.1f, 0.15f, 0.2f, 1.0f}}};
+  state.shadows.pass_action =
+      (sg_pass_action){.colors[0] = {.action = SG_ACTION_CLEAR,
+                                     .value = {1.0f, 1.0f, 1.0f, 1.0f}}};
   sdtx_setup(&(sdtx_desc_t){
       .fonts[0] = sdtx_font_oric(),
   });
   __cdbgui_setup(sapp_sample_count());
 
+  // SHADOWS
+  sg_image_desc img_desc = {.render_target = true,
+                            .width = SHADOW_MAP_RESOLUTION,
+                            .height = SHADOW_MAP_RESOLUTION,
+                            .pixel_format = SG_PIXELFORMAT_RGBA8,
+                            .min_filter = SG_FILTER_LINEAR,
+                            .mag_filter = SG_FILTER_LINEAR,
+                            .sample_count = 1,
+                            .label = "shadow-map-color-image"};
+  sg_image color_img = sg_make_image(&img_desc);
+  img_desc.pixel_format = SG_PIXELFORMAT_DEPTH;
+  img_desc.label = "shadow-map-depth-image";
+  sg_image depth_img = sg_make_image(&img_desc);
+  state.shadows.pass =
+      sg_make_pass(&(sg_pass_desc){.color_attachments[0].image = color_img,
+                                   .depth_stencil_attachment.image = depth_img,
+                                   .label = "shadow-map-pass"});
+
+  state.shadows.pip = sg_make_pipeline(&(sg_pipeline_desc){
+      .layout =
+          {.buffers[0].stride = 13 * sizeof(float),
+           .attrs =
+               {
+                   [ATTR_shadowVS_position].format = SG_VERTEXFORMAT_FLOAT4,
+                   [1] = {.format = SG_VERTEXFORMAT_FLOAT3, .buffer_index = 1},
+               }},
+      .shader = sg_make_shader(shadow_shader_desc(sg_query_backend())),
+      .index_type = SG_INDEXTYPE_UINT16,
+      .cull_mode = SG_CULLMODE_FRONT,
+      .sample_count = 1,
+      .depth =
+          {
+              .pixel_format = SG_PIXELFORMAT_DEPTH,
+              .compare = SG_COMPAREFUNC_LESS_EQUAL,
+              .write_enabled = true,
+          },
+      .colors[0].pixel_format = SG_PIXELFORMAT_RGBA8,
+      .label = "shadow-map-pipeline"});
   /*
     float vertices[] = {
         -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f,  -1.0f, -1.0f, 0.0f, 1.0f,
@@ -184,7 +234,8 @@ void init(void) {
                                        .data = SG_RANGE(indices),
                                        .label = "cube-indices"});
 
-  sg_shader shd = sg_make_shader(textured_cube_shader_desc(sg_query_backend()));
+  sg_shader shd =
+  sg_make_shader(textured_cube_shader_desc(sg_query_backend()));
 
   state.cube_pip = sg_make_pipeline(&(sg_pipeline_desc){
       .layout =
@@ -224,17 +275,17 @@ void init(void) {
   sg_buffer skybox_buffer = sg_make_buffer(&(sg_buffer_desc){
       .data = SG_RANGE(skybox_vertices), .label = "skybox-vertices"});
 
-  state.skybox_bind.vertex_buffers[0] = skybox_buffer;
+  state.deflt.skybox_bind.vertex_buffers[0] = skybox_buffer;
   sg_image skybox_img_id = sg_alloc_image();
-  state.skybox_bind.fs_images[SLOT_skybox_texture] = skybox_img_id;
+  state.deflt.skybox_bind.fs_images[SLOT_skybox_texture] = skybox_img_id;
   // sg_image cube_img_id = sg_alloc_image();
   // state.cube_bind.fs_images[SLOT_cube_texture] = cube_img_id;
   sg_image shape_img_id = sg_alloc_image();
-  state.shape_bind.fs_images[SLOT_shape_texture] = shape_img_id;
+  // state.deflt.shape_bind.fs_images[SLOT_shape_texture] = shape_img_id;
   sg_image arraytex_img_id = sg_alloc_image();
-  state.shape_bind.fs_images[SLOT_shape_arraytex] = arraytex_img_id;
+  state.deflt.shape_bind.fs_images[SLOT_shape_arraytex] = arraytex_img_id;
 
-  state.skybox_pip = sg_make_pipeline(&(sg_pipeline_desc){
+  state.deflt.skybox_pip = sg_make_pipeline(&(sg_pipeline_desc){
       .shader = sg_make_shader(skybox_shader_desc(sg_query_backend())),
       .layout =
           {
@@ -266,7 +317,7 @@ void init(void) {
     }
   }
 
-  state.shape_pip = sg_make_pipeline(&(sg_pipeline_desc){
+  state.deflt.shape_pip = sg_make_pipeline(&(sg_pipeline_desc){
       .shader = sg_make_shader(textured_shape_shader_desc(sg_query_backend())),
       .layout = {.buffers[0] = sshape_buffer_layout_desc(),
                  .buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE,
@@ -280,7 +331,7 @@ void init(void) {
                            [5] = {.format = SG_VERTEXFORMAT_FLOAT,
                                   .buffer_index = 2}}},
       .index_type = SG_INDEXTYPE_UINT16,
-      .cull_mode = SG_CULLMODE_NONE,
+      .cull_mode = SG_CULLMODE_BACK,
       .depth = {.compare = SG_COMPAREFUNC_LESS_EQUAL, .write_enabled = true},
       .label = "shape-pipeline",
   });
@@ -310,10 +361,18 @@ void init(void) {
       (sg_buffer_desc){.data = SG_RANGE(shape_pos), .label = "instance-data"};
   sg_buffer_desc texbuf_desc = (sg_buffer_desc){
       .data = SG_RANGE(shape_tex_index), .label = "texture-index-data"};
-  state.shape_bind.vertex_buffers[0] = sg_make_buffer(&vbuf_desc);
-  state.shape_bind.vertex_buffers[1] = sg_make_buffer(&instbuf_desc);
-  state.shape_bind.vertex_buffers[2] = sg_make_buffer(&texbuf_desc);
-  state.shape_bind.index_buffer = sg_make_buffer(&ibuf_desc);
+  sg_buffer vbuf = sg_make_buffer(&vbuf_desc);
+  sg_buffer instbuf = sg_make_buffer(&instbuf_desc);
+  sg_buffer texbuf = sg_make_buffer(&texbuf_desc);
+  sg_buffer ibuf = sg_make_buffer(&ibuf_desc);
+  state.deflt.shape_bind.vertex_buffers[0] = vbuf;
+  state.deflt.shape_bind.vertex_buffers[1] = instbuf;
+  state.deflt.shape_bind.vertex_buffers[2] = texbuf;
+  state.deflt.shape_bind.index_buffer = ibuf;
+  state.deflt.shape_bind.fs_images[SLOT_shadowMap] = color_img;
+  state.shadows.bind.vertex_buffers[0] = vbuf;
+  state.shadows.bind.vertex_buffers[1] = instbuf;
+  state.shadows.bind.index_buffer = ibuf;
 
   camera_set_up(&state.cam, HMM_Vec3(0.0f, 2.5f, 2.0f),
                 (&(cam_desc_t){
@@ -435,7 +494,7 @@ void frame(void) {
       HMM_Perspective(camera_get_fov(&state.cam), aspect, 0.1f, 1000.0f);
 
   uint64_t renderStartTime = stm_now();
-  sg_begin_default_pass(&state.pass_action, sapp_width(), sapp_height());
+  sg_begin_default_pass(&state.deflt.pass_action, sapp_width(), sapp_height());
 
   // DRAW CUBE
   // vs_params_t vs_params;
@@ -449,8 +508,8 @@ void frame(void) {
 
   // DRAW SHAPES
   textured_shape_vs_params_t shape_params;
-  sg_apply_pipeline(state.shape_pip);
-  sg_apply_bindings(&state.shape_bind);
+  sg_apply_pipeline(state.deflt.shape_pip);
+  sg_apply_bindings(&state.deflt.shape_bind);
   shape_params.viewproj = HMM_MultiplyMat4(projection, view);
   shape_params.model = HMM_Mat4d(1.0);
   sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_shape_vs_params,
@@ -467,8 +526,8 @@ void frame(void) {
   skybox_params.view = view;
   skybox_params.projection = projection;
 
-  sg_apply_pipeline(state.skybox_pip);
-  sg_apply_bindings(&state.skybox_bind);
+  sg_apply_pipeline(state.deflt.skybox_pip);
+  sg_apply_bindings(&state.deflt.skybox_bind);
   sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_skybox_vs_params,
                     &SG_RANGE(skybox_params));
   sg_draw(0, 36, 1);

@@ -3,6 +3,44 @@
 @ctype vec4 hmm_vec4
 @ctype mat4 hmm_mat4
 
+@block util
+vec4 encodeDepth(float v) {
+    vec4 enc = vec4(1.0, 255.0, 65025.0, 16581375.0) * v;
+    enc = fract(enc);
+    enc -= enc.yzww * vec4(1.0/255.0,1.0/255.0, 1.0/255.0, 0.0);
+    return enc;
+}
+
+float decodeDepth(vec4 rgba) {
+    return dot(rgba, vec4(1.0, 1.0/255.0, 1.0/65025.0, 1.0/16581375.0));
+}
+
+float sampleShadow(sampler2D shadowMap, vec2 uv, float compare) {
+    #if !SOKOL_GLSL
+    uv.y = 1.0 - uv.y;
+    #endif
+    float depth = decodeDepth(texture(shadowMap, vec2(uv.x, uv.y)));
+    depth += 0.001;
+    return step(compare, depth);
+}
+
+float sampleShadowPCF(sampler2D shadowMap, vec2 uv, vec2 smSize, float compare) {
+    float result = 0.0;
+    for (int x = -2; x <= 2; x++) {
+        for (int y = -2; y <= 2; y++) {
+            vec2 off = vec2(x,y)/smSize;
+            result += sampleShadow(shadowMap, uv+off, compare);
+        }
+    }
+    return result / 25.0;
+}
+
+vec4 gamma(vec4 c) {
+    float p = 1.0 / 2.2;
+    return vec4(pow(c.xyz, vec3(p,p,p)), c.w);
+}
+@end
+
 @vs vs
 uniform vs_params {
     mat4 mvp;
@@ -129,7 +167,7 @@ in vec3 array_texcoord;
 in vec3 world_position;
 out vec4 frag_color;
 
-uniform sampler2D shape_texture;
+uniform sampler2D shadowMap;
 uniform sampler2DArray shape_arraytex;
 
 void main() {
@@ -137,7 +175,7 @@ void main() {
     //vec2 redo = out_texcoord * vec2(0.4, 0.4);
     //frag_color = color * vec4(norm, 0.5) * vec4(redo, 1.0, 0.5);
     //frag_color = color;
-    frag_color = texture(shape_texture, (world_position * 0.05).xz);
+    frag_color = texture(shadowMap, (world_position * 0.05).xz);
     frag_color = texture(shape_arraytex, array_texcoord);
 }
 @end
@@ -171,8 +209,35 @@ void main() {
 }
 @end
 
+@vs shadowVS
+uniform vs_shadow_params {
+    mat4 mvp;
+};
+
+in vec4 position;
+in vec3 inst_pos;
+out vec2 projZW;
+void main() {
+    vec4 instPos = position + vec4(inst_pos, 1.0);
+    gl_Position = mvp * instPos;
+    projZW = gl_Position.zw;
+}
+@end
+
+@fs shadowFS
+@include_block util
+in vec2 projZW;
+out vec4 fragColor;
+
+void main() {
+    float depth = projZW.x / projZW.y;
+    fragColor = encodeDepth(depth);
+}
+@end
+
 @program skybox vs_skybox fs_skybox
 @program cube vs fs
 @program textured_cube textured_vs textured_fs
 @program shape shape_vs shape_fs
 @program textured_shape textured_shape_vs textured_shape_fs
+@program shadow shadowVS shadowFS

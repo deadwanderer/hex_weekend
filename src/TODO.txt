@@ -1,0 +1,5 @@
+TODO
+
+1. Adapt textured_shape shader for shadows\light
+2. Set up light in code.
+3. Rendering loop modifications.
