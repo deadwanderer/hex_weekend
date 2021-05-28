@@ -252,12 +252,17 @@ void init(void) {
   // SHAPES
 
   hmm_vec3 shape_pos[NUM_CELLS];
+  float shape_tex_index[NUM_CELLS];
   srand((unsigned int)time(NULL));
   for (int z = 0; z < NUM_CELLS_LONG; ++z) {
     for (int x = 0; x < NUM_CELLS_WIDE; ++x) {
-      float y = (float)(rand() % (11) - 5) / 25.0f;
+      float i = ((float)x + z * 0.5f - z / 2) * (2.0f * 0.866025404f);
+      float j = (float)z * 1.5f;
+      int iZ = abs((int)j % ARRAYTEX_COUNT);
+      shape_tex_index[NUM_CELLS_WIDE * z + x] = floorf((float)iZ);
+      float y = (float)(rand() % (11) - 5) / 10.0f;
       shape_pos[NUM_CELLS_WIDE * z + x] =
-          HMM_Vec3((float)(x - 50), y, (float)(z - 50));
+          HMM_Vec3((float)(i - 50), y, (float)(j - 50));
     }
   }
 
@@ -265,12 +270,15 @@ void init(void) {
       .shader = sg_make_shader(textured_shape_shader_desc(sg_query_backend())),
       .layout = {.buffers[0] = sshape_buffer_layout_desc(),
                  .buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE,
+                 .buffers[2].step_func = SG_VERTEXSTEP_PER_INSTANCE,
                  .attrs = {[0] = sshape_position_attr_desc(),
                            [1] = sshape_normal_attr_desc(),
                            [2] = sshape_texcoord_attr_desc(),
                            [3] = sshape_color_attr_desc(),
                            [4] = {.format = SG_VERTEXFORMAT_FLOAT3,
-                                  .buffer_index = 1}}},
+                                  .buffer_index = 1},
+                           [5] = {.format = SG_VERTEXFORMAT_FLOAT,
+                                  .buffer_index = 2}}},
       .index_type = SG_INDEXTYPE_UINT16,
       .cull_mode = SG_CULLMODE_NONE,
       .depth = {.compare = SG_COMPAREFUNC_LESS_EQUAL, .write_enabled = true},
@@ -300,8 +308,11 @@ void init(void) {
   ibuf_desc.label = "shape-indices";
   sg_buffer_desc instbuf_desc =
       (sg_buffer_desc){.data = SG_RANGE(shape_pos), .label = "instance-data"};
+  sg_buffer_desc texbuf_desc = (sg_buffer_desc){
+      .data = SG_RANGE(shape_tex_index), .label = "texture-index-data"};
   state.shape_bind.vertex_buffers[0] = sg_make_buffer(&vbuf_desc);
   state.shape_bind.vertex_buffers[1] = sg_make_buffer(&instbuf_desc);
+  state.shape_bind.vertex_buffers[2] = sg_make_buffer(&texbuf_desc);
   state.shape_bind.index_buffer = sg_make_buffer(&ibuf_desc);
 
   camera_set_up(&state.cam, HMM_Vec3(0.0f, 2.5f, 2.0f),
@@ -446,19 +457,6 @@ void frame(void) {
                     &SG_RANGE(shape_params));
   sg_draw(state.shape_elems.base_element, state.shape_elems.num_elements,
           NUM_CELLS);
-
-  shape_params.model = HMM_Translate(HMM_Vec3(x - 2, 0.0f, -z));
-  int iZ = abs((int)z % ARRAYTEX_COUNT);
-  shape_params.texIndex = floorf((float)iZ);
-  // for (int i = -50; i < 50; i++) {
-  //   for (int j = -50; j < 50; j++) {
-  //     float x = ((float)i + j * 0.5f - j / 2) * (2.0f * 0.866025404f);
-  //     float z = (float)j * 1.5f;
-
-  //     shape_params.model = HMM_Translate(HMM_Vec3(x - 2, 0.0f, -z));
-
-  //   }
-  // }
 
   // DRAW SKYBOX
   view.Elements[3][0] = 0.0f;
