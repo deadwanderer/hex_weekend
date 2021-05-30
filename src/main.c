@@ -24,8 +24,8 @@
 #include "Camera.h"
 // #include "hex.h"
 
-#define NUM_CELLS_WIDE 100
-#define NUM_CELLS_LONG 100
+#define NUM_CELLS_WIDE 10
+#define NUM_CELLS_LONG 10
 #define NUM_CELLS (NUM_CELLS_WIDE * NUM_CELLS_LONG)
 
 static uint8_t favicon_buffer[32 * 32 * 4];
@@ -259,10 +259,11 @@ void init(void) {
       float i = ((float)x + z * 0.5f - z / 2) * (2.0f * 0.866025404f);
       float j = (float)z * 1.5f;
       int iZ = abs((int)j % ARRAYTEX_COUNT);
-      shape_tex_index[NUM_CELLS_WIDE * z + x] = floorf((float)iZ);
+      shape_tex_index[NUM_CELLS_WIDE * z + x] =
+          (float)(rand() % ARRAYTEX_COUNT);
       float y = (float)(rand() % (11) - 5) / 10.0f;
-      shape_pos[NUM_CELLS_WIDE * z + x] =
-          HMM_Vec3((float)(i - 50), y, (float)(j - 50));
+      shape_pos[NUM_CELLS_WIDE * z + x] = HMM_Vec3(
+          (float)(i - NUM_CELLS_WIDE / 2), y, (float)(j - NUM_CELLS_LONG / 2));
     }
   }
 
@@ -315,7 +316,7 @@ void init(void) {
   state.shape_bind.vertex_buffers[2] = sg_make_buffer(&texbuf_desc);
   state.shape_bind.index_buffer = sg_make_buffer(&ibuf_desc);
 
-  camera_set_up(&state.cam, HMM_Vec3(0.0f, 2.5f, 2.0f),
+  camera_set_up(&state.cam, HMM_Vec3(0.0f, 2.5f, 6.0f),
                 (&(cam_desc_t){
                     // .constrain_movement = true,
                     .min_x = -3.5f,
