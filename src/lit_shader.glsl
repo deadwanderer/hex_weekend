@@ -68,4 +68,30 @@ void main() {
 }
 @end
 
+@vs lightVS
+uniform light_vs_params {
+    mat4 mvp;
+    vec3 color;
+};
+
+in vec4 position;
+
+out vec4 frag_color;
+
+void main() {
+    gl_Position = mvp * position;
+    frag_color = vec4(color, 1.0);
+}
+@end
+
+@fs lightFS
+in vec4 frag_color;
+out vec4 FragColor;
+
+void main() {
+    FragColor = frag_color;
+}
+@end
+
 @program lit_tex litTexVS litTexFS
+@program light lightVS lightFS

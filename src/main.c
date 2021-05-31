@@ -37,8 +37,8 @@ static const char* skybox_names[EV_SKYBOX_COUNT] = {
 };
 
 static struct {
-  // sg_pipeline cube_pip;
-  // sg_bindings cube_bind;
+  sg_pipeline cube_pip;
+  sg_bindings cube_bind;
   sg_pipeline skybox_pip;
   sg_bindings skybox_bind;
   sg_pipeline shape_pip;
@@ -54,6 +54,7 @@ static struct {
   uint8_t shape_texture_buffer[6 * 256 * 1024];
   uint8_t arraytex_load_buffer[ARRAYTEX_IMAGE_BUFFER_SIZE];
   uint32_t arraytex_buffer[ARRAYTEX_IMAGE_BUFFER_SIZE];
+  hmm_vec3 lightPos;
   camera_t cam;
   hmm_vec2 last_mouse;
   bool first_mouse;
@@ -166,56 +167,48 @@ void init(void) {
   });
   __cdbgui_setup(sapp_sample_count());
 
-  /*
-    float vertices[] = {
-        -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f,  -1.0f, -1.0f, 0.0f, 1.0f,
-        1.0f,  1.0f,  -1.0f, 0.0f, 0.0f, -1.0f, 1.0f,  -1.0f, 1.0f, 0.0f,
-        -1.0f, -1.0f, 1.0f,  0.0f, 1.0f, 1.0f,  -1.0f, 1.0f,  1.0f, 1.0f,
-        1.0f,  1.0f,  1.0f,  1.0f, 0.0f, -1.0f, 1.0f,  1.0f,  0.0f, 0.0f,
-        -1.0f, -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 1.0f,  -1.0f, 0.0f, 0.0f,
-        -1.0f, 1.0f,  1.0f,  1.0f, 0.0f, -1.0f, -1.0f, 1.0f,  1.0f, 1.0f,
-        1.0f,  -1.0f, -1.0f, 1.0f, 1.0f, 1.0f,  1.0f,  -1.0f, 1.0f, 0.0f,
-        1.0f,  1.0f,  1.0f,  0.0f, 0.0f, 1.0f,  -1.0f, 1.0f,  0.0f, 1.0f,
-        -1.0f, -1.0f, -1.0f, 0.0f, 0.0f, -1.0f, -1.0f, 1.0f,  0.0f, 1.0f,
-        1.0f,  -1.0f, 1.0f,  1.0f, 1.0f, 1.0f,  -1.0f, -1.0f, 1.0f, 0.0f,
-        -1.0f, 1.0f,  -1.0f, 1.0f, 0.0f, -1.0f, 1.0f,  1.0f,  1.0f, 1.0f,
-        1.0f,  1.0f,  1.0f,  0.0f, 1.0f, 1.0f,  1.0f,  -1.0f, 0.0f, 0.0f,
-    };
+  float cube_vertices[] = {
+      -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f,
+      -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,
+      1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, -1.0f,
+      -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,
+      1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,
+      1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,
+      1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f,
+      -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f,
+  };
 
-    sg_buffer vbuf = sg_make_buffer(
-        &(sg_buffer_desc){.data = SG_RANGE(vertices), .label =
-    "cube-vertices"});
+  sg_buffer vbuf = sg_make_buffer(&(sg_buffer_desc){
+      .data = SG_RANGE(cube_vertices), .label = "cube-vertices"});
 
-  uint16_t indices[] = {0,  1,  2,  0,  2,  3,  6,  5,  4,  7,  6,  4,
-                        10, 11, 8,  9,  10, 8,  14, 13, 12, 15, 14, 12,
-                        16, 17, 18, 16, 18, 19, 22, 21, 20, 23, 22, 20};
+  uint16_t cube_indices[] = {0,  1,  2,  0,  2,  3,  6,  5,  4,  7,  6,  4,
+                             10, 11, 8,  9,  10, 8,  14, 13, 12, 15, 14, 12,
+                             16, 17, 18, 16, 18, 19, 22, 21, 20, 23, 22, 20};
   sg_buffer ibuf =
       sg_make_buffer(&(sg_buffer_desc){.type = SG_BUFFERTYPE_INDEXBUFFER,
-                                       .data = SG_RANGE(indices),
+                                       .data = SG_RANGE(cube_indices),
                                        .label = "cube-indices"});
 
-  sg_shader shd = sg_make_shader(textured_cube_shader_desc(sg_query_backend()));
+  sg_shader shd = sg_make_shader(light_shader_desc(sg_query_backend()));
 
-  state.cube_pip = sg_make_pipeline(&(sg_pipeline_desc){
-      .layout =
-          {.buffers[0].stride = 20,
-           .attrs = {[ATTR_textured_vs_position].format =
-                         SG_VERTEXFORMAT_FLOAT3,
-                     [ATTR_textured_vs_texcoord0].format =
-                         SG_VERTEXFORMAT_FLOAT2}},
-      .shader = shd,
-      .index_type = SG_INDEXTYPE_UINT16,
-      .cull_mode = SG_CULLMODE_BACK,
-      .depth =
-          {
-              .write_enabled = true,
-              .compare = SG_COMPAREFUNC_LESS_EQUAL,
-          },
-      .label = "cube-pipeline"});
+  state.cube_pip = sg_make_pipeline(
+      &(sg_pipeline_desc){.layout =
+                              {
+                                  .attrs = {[ATTR_lightVS_position].format =
+                                                SG_VERTEXFORMAT_FLOAT3},
+                              },
+                          .shader = shd,
+                          .index_type = SG_INDEXTYPE_UINT16,
+                          .cull_mode = SG_CULLMODE_BACK,
+                          .depth =
+                              {
+                                  .write_enabled = true,
+                                  .compare = SG_COMPAREFUNC_LESS_EQUAL,
+                              },
+                          .label = "light-pipeline"});
 
   state.cube_bind =
       (sg_bindings){.vertex_buffers[0] = vbuf, .index_buffer = ibuf};
-  */
 
   // Set Up Skybox
   float skybox_vertices[] = {
@@ -249,7 +242,8 @@ void init(void) {
   //         {
   //             .attrs =
   //                 {
-  //                     [ATTR_vs_skybox_a_pos].format = SG_VERTEXFORMAT_FLOAT3,
+  //                     [ATTR_vs_skybox_a_pos].format =
+  //                     SG_VERTEXFORMAT_FLOAT3,
   //                 },
   //         },
   //     .depth =
@@ -335,6 +329,7 @@ void init(void) {
                     .min_z = -7.5f,
                     .max_z = 3.5f,
                 }));
+  state.lightPos = HMM_Vec3(0.0f, 8.0f, 0.0f);
 
   state.imageLoadStartTime = stm_now();
   sfetch_send(&(sfetch_request_t){.path = "favicon-32x32.png",
@@ -345,18 +340,19 @@ void init(void) {
   // load_image(&(image_request_t){.img_id = cube_img_id,
   //                               .path = "container2.png",
   //                               .buffer_ptr = state.texture_buffer,
-  //                               .buffer_size = sizeof(state.texture_buffer),
-  //                               .wrap_u = SG_WRAP_CLAMP_TO_EDGE,
-  //                               .wrap_v = SG_WRAP_CLAMP_TO_EDGE},
+  //                               .buffer_size =
+  //                               sizeof(state.texture_buffer), .wrap_u =
+  //                               SG_WRAP_CLAMP_TO_EDGE, .wrap_v =
+  //                               SG_WRAP_CLAMP_TO_EDGE},
   //            "cube-image");
 
   // load_image(
   //     &(image_request_t){.img_id = shape_img_id,
   //                        .path = "sand.png",
   //                        .buffer_ptr = state.shape_texture_buffer,
-  //                        .buffer_size = sizeof(state.shape_texture_buffer),
-  //                        .wrap_u = SG_WRAP_REPEAT,
-  //                        .wrap_v = SG_WRAP_REPEAT},
+  //                        .buffer_size =
+  //                        sizeof(state.shape_texture_buffer), .wrap_u =
+  //                        SG_WRAP_REPEAT, .wrap_v = SG_WRAP_REPEAT},
   //     "shape-texture");
 
   const char* arraytex_paths[ARRAYTEX_COUNT] = {
@@ -489,15 +485,26 @@ void frame(void) {
   uint64_t renderStartTime = stm_now();
   sg_begin_default_pass(&state.pass_action, sapp_width(), sapp_height());
 
-  // DRAW CUBE
-  // vs_params_t vs_params;
-  // vs_params.mvp =
-  // HMM_MultiplyMat4(HMM_MultiplyMat4(projection, view), HMM_Mat4d(1.0f));
+  // DRAW LIGHT
+  light_vs_params_t light_vs_params;
+  hmm_vec3 light_variation =
+      HMM_Vec3(4.2f * (float)sin(stm_sec(currTime)), 0.0f,
+               2.0f * (float)cos(stm_sec(currTime)));
+  hmm_vec3 light_position = HMM_AddVec3(state.lightPos, light_variation);
+  hmm_mat4 light_pos = HMM_Translate(light_position);
+  hmm_mat4 light_scale = HMM_Scale(HMM_Vec3(0.13f, 0.13f, 0.13f));
+  hmm_vec3 light_color = HMM_Vec3(1.0f, 1.0f, 1.0f);
 
-  // sg_apply_pipeline(state.cube_pip);
-  // sg_apply_bindings(&state.cube_bind);
-  // sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_vs_params,
-  // &SG_RANGE(vs_params)); sg_draw(0, 36, 1);
+  light_vs_params.mvp =
+      HMM_MultiplyMat4(HMM_MultiplyMat4(projection, view),
+                       HMM_MultiplyMat4(light_pos, light_scale));
+  light_vs_params.color = light_color;
+
+  sg_apply_pipeline(state.cube_pip);
+  sg_apply_bindings(&state.cube_bind);
+  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_light_vs_params,
+                    &SG_RANGE(light_vs_params));
+  sg_draw(0, 36, 1);
 
   // DRAW SHAPES
   lit_tex_vs_params_t vs_params;
@@ -508,8 +515,8 @@ void frame(void) {
   vs_params.model = HMM_Mat4d(1.0);
   fs_params.ambientStrength = 0.1f;
   fs_params.specularStrength = 0.5f;
-  fs_params.lightPos = HMM_Vec3(14.0f, 4.0f, 4.0f);
-  fs_params.lightColor = HMM_Vec3(0.7f, 0.6f, 0.8f);
+  fs_params.lightPos = light_position;
+  fs_params.lightColor = light_color;
   fs_params.viewPos = camera_get_position(&state.cam);
   sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_lit_tex_vs_params,
                     &SG_RANGE(vs_params));
