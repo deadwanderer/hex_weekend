@@ -30,6 +30,11 @@
 
 static uint8_t favicon_buffer[32 * 32 * 4];
 
+static const char* skybox_names[EV_SKYBOX_COUNT] = {
+    "arch3",  "cave3",   "dark",  "hot", "rainbow", "sh",
+    "skyast", "skyhsky", "skype", "sp2", "sp3",     "tron",
+};
+
 static struct {
   // sg_pipeline cube_pip;
   // sg_bindings cube_bind;
@@ -38,11 +43,13 @@ static struct {
   sg_pipeline shape_pip;
   sg_bindings shape_bind;
   sg_pass_action pass_action;
+  sg_image sky_img[EV_SKYBOX_COUNT + 1];
   sshape_element_range_t shape_elems;
-  _cubemap_request_t cubemap_req;
+  _cubemap_request_t cubemap_req[EV_SKYBOX_COUNT + 1];
   _arraytex_request_t arraytex_req;
   // uint8_t texture_buffer[1024 * 1024];
   uint8_t cubemap_buffer[6 * 1024 * 1024];
+  uint8_t ev_cubemap_buffer[EV_IMAGE_BUFFER_SIZE];
   uint8_t shape_texture_buffer[6 * 256 * 1024];
   uint8_t arraytex_load_buffer[ARRAYTEX_IMAGE_BUFFER_SIZE];
   uint32_t arraytex_buffer[ARRAYTEX_IMAGE_BUFFER_SIZE];
@@ -51,6 +58,7 @@ static struct {
   bool first_mouse;
   bool show_debug_ui;
   bool show_mem_ui;
+  uint32_t selectedSkybox;
   uint64_t lastFrameTime;
   uint64_t timeToLoadCubemap;
   uint64_t timeToLoadArrayTextures;
@@ -109,8 +117,8 @@ void load_array_texture(arraytex_request_t* request) {
   }
 }
 
-void load_cubemap(cubemap_request_t* request) {
-  state.cubemap_req =
+void load_cubemap(cubemap_request_t* request, int index) {
+  state.cubemap_req[index] =
       (_cubemap_request_t){.img_id = request->img_id,
                            .buffer = request->buffer_ptr,
                            .buffer_offset = request->buffer_offset,
@@ -122,8 +130,8 @@ void load_cubemap(cubemap_request_t* request) {
                             request->path_front, request->path_back};
 
   for (int i = 0; i < 6; ++i) {
-    _cubemap_request_instance_t req_instance = {.index = i,
-                                                .request = &state.cubemap_req};
+    _cubemap_request_instance_t req_instance = {
+        .index = i, .request = &state.cubemap_req[index]};
     sfetch_send(&(sfetch_request_t){
         .path = cubemap[i],
         .callback = cubemap_fetch_callback,
@@ -136,8 +144,8 @@ void load_cubemap(cubemap_request_t* request) {
 
 void init(void) {
   sg_setup(&(sg_desc){.context = sapp_sgcontext()});
-  sfetch_setup(
-      &(sfetch_desc_t){.max_requests = 16, .num_channels = 4, .num_lanes = 4});
+  sfetch_setup(&(sfetch_desc_t){
+      .max_requests = 120, .num_channels = 8, .num_lanes = 10});
   stm_setup();
   uint64_t initStartTime = stm_now();
   state.show_debug_ui = false;
@@ -148,6 +156,7 @@ void init(void) {
   state.imageLoadStartTime = 0;
   state.timeToLoadCubemap = 0;
   state.timeToLoadArrayTextures = 0;
+  state.selectedSkybox = 0;
   state.pass_action =
       (sg_pass_action){.colors[0] = {.action = SG_ACTION_CLEAR,
                                      .value = {0.1f, 0.15f, 0.2f, 1.0f}}};
@@ -225,8 +234,7 @@ void init(void) {
       .data = SG_RANGE(skybox_vertices), .label = "skybox-vertices"});
 
   state.skybox_bind.vertex_buffers[0] = skybox_buffer;
-  sg_image skybox_img_id = sg_alloc_image();
-  state.skybox_bind.fs_images[SLOT_skybox_texture] = skybox_img_id;
+  // sg_image skybox_img_id = sg_alloc_image();
   // sg_image cube_img_id = sg_alloc_image();
   // state.cube_bind.fs_images[SLOT_cube_texture] = cube_img_id;
   sg_image shape_img_id = sg_alloc_image();
@@ -364,7 +372,44 @@ void init(void) {
       .fail_callback = fail_callback,
       .success_callback = arraytex_success_callback});
 
-  load_cubemap(&(cubemap_request_t){.img_id = skybox_img_id,
+  for (int i = 0; i < EV_SKYBOX_COUNT; i++) {
+    char path_right[48];
+    char path_left[48];
+    char path_front[48];
+    char path_back[48];
+    char path_up[48];
+    char path_down[48];
+    sprintf(path_right, "%s_rt.png", skybox_names[i]);
+    sprintf(path_left, "%s_lf.png", skybox_names[i]);
+    sprintf(path_front, "%s_ft.png", skybox_names[i]);
+    sprintf(path_back, "%s_bk.png", skybox_names[i]);
+    sprintf(path_up, "%s_up.png", skybox_names[i]);
+    sprintf(path_down, "%s_dn.png", skybox_names[i]);
+    path_right[47] = '\0';
+    path_left[47] = '\0';
+    path_front[47] = '\0';
+    path_back[47] = '\0';
+    path_up[47] = '\0';
+    path_down[47] = '\0';
+    state.sky_img[i] = sg_alloc_image();
+    load_cubemap(
+        &(cubemap_request_t){.img_id = state.sky_img[i],
+                             .path_right = path_right,
+                             .path_left = path_left,
+                             .path_up = path_up,
+                             .path_down = path_down,
+                             .path_front = path_front,
+                             .path_back = path_back,
+                             .buffer_ptr = state.ev_cubemap_buffer +
+                                           (EV_SKYBOX_BUFFER_OFFSET * i),
+                             .buffer_offset = 1024 * 1024,
+                             .fail_callback = fail_callback,
+                             .success_callback = cube_success_callback},
+        i);
+  }
+
+  state.sky_img[EV_SKYBOX_COUNT] = sg_alloc_image();
+  load_cubemap(&(cubemap_request_t){.img_id = state.sky_img[EV_SKYBOX_COUNT],
                                     .path_right = "right.jpg",
                                     .path_left = "left.jpg",
                                     .path_up = "up.jpg",
@@ -374,7 +419,8 @@ void init(void) {
                                     .buffer_ptr = state.cubemap_buffer,
                                     .buffer_offset = 1024 * 1024,
                                     .fail_callback = fail_callback,
-                                    .success_callback = cube_success_callback});
+                                    .success_callback = cube_success_callback},
+               EV_SKYBOX_COUNT);
   state.initTime = stm_diff(stm_now(), initStartTime);
 }
 
@@ -468,6 +514,9 @@ void frame(void) {
   skybox_params.view = view;
   skybox_params.projection = projection;
 
+  state.skybox_bind.fs_images[SLOT_skybox_texture] =
+      state.sky_img[state.selectedSkybox];
+
   sg_apply_pipeline(state.skybox_pip);
   sg_apply_bindings(&state.skybox_bind);
   sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_skybox_vs_params,
@@ -498,6 +547,18 @@ void event(const sapp_event* e) {
     }
     if (e->key_code == SAPP_KEYCODE_N) {
       state.show_mem_ui = !state.show_mem_ui;
+    }
+    if (e->key_code == SAPP_KEYCODE_R) {
+      state.selectedSkybox++;
+      if (state.selectedSkybox > EV_SKYBOX_COUNT) {
+        state.selectedSkybox = 0;
+      }
+    }
+    if (e->key_code == SAPP_KEYCODE_T) {
+      state.selectedSkybox--;
+      if (state.selectedSkybox < 0) {
+        state.selectedSkybox = EV_SKYBOX_COUNT;
+      }
     }
   }
   hmm_vec2 mouse_offset = HMM_Vec2(0.0f, 0.0f);
