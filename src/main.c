@@ -13,7 +13,8 @@
 #include "sokol_glue.h"
 #include "cdbgui/cdbgui.h"
 #include "HandmadeMath/HandmadeMath.h"
-#include "shaders.glsl.h"
+#include "lit_shader.glsl.h"
+// #include "shaders.glsl.h"
 
 #include "config.h"
 #include "types.h"
@@ -159,7 +160,7 @@ void init(void) {
   state.selectedSkybox = 0;
   state.pass_action =
       (sg_pass_action){.colors[0] = {.action = SG_ACTION_CLEAR,
-                                     .value = {0.1f, 0.15f, 0.2f, 1.0f}}};
+                                     .value = {0.05f, 0.05f, 0.05f, 1.0f}}};
   sdtx_setup(&(sdtx_desc_t){
       .fonts[0] = sdtx_font_oric(),
   });
@@ -237,25 +238,25 @@ void init(void) {
   // sg_image skybox_img_id = sg_alloc_image();
   // sg_image cube_img_id = sg_alloc_image();
   // state.cube_bind.fs_images[SLOT_cube_texture] = cube_img_id;
-  sg_image shape_img_id = sg_alloc_image();
-  state.shape_bind.fs_images[SLOT_shape_texture] = shape_img_id;
+  // sg_image shape_img_id = sg_alloc_image();
+  // state.shape_bind.fs_images[SLOT_shape_texture] = shape_img_id;
   sg_image arraytex_img_id = sg_alloc_image();
   state.shape_bind.fs_images[SLOT_shape_arraytex] = arraytex_img_id;
 
-  state.skybox_pip = sg_make_pipeline(&(sg_pipeline_desc){
-      .shader = sg_make_shader(skybox_shader_desc(sg_query_backend())),
-      .layout =
-          {
-              .attrs =
-                  {
-                      [ATTR_vs_skybox_a_pos].format = SG_VERTEXFORMAT_FLOAT3,
-                  },
-          },
-      .depth =
-          {
-              .compare = SG_COMPAREFUNC_LESS_EQUAL,
-          },
-      .label = "skybox-pipeline"});
+  // state.skybox_pip = sg_make_pipeline(&(sg_pipeline_desc){
+  //     .shader = sg_make_shader(skybox_shader_desc(sg_query_backend())),
+  //     .layout =
+  //         {
+  //             .attrs =
+  //                 {
+  //                     [ATTR_vs_skybox_a_pos].format = SG_VERTEXFORMAT_FLOAT3,
+  //                 },
+  //         },
+  //     .depth =
+  //         {
+  //             .compare = SG_COMPAREFUNC_LESS_EQUAL,
+  //         },
+  //     .label = "skybox-pipeline"});
 
   // SHAPES
 
@@ -276,7 +277,7 @@ void init(void) {
   }
 
   state.shape_pip = sg_make_pipeline(&(sg_pipeline_desc){
-      .shader = sg_make_shader(textured_shape_shader_desc(sg_query_backend())),
+      .shader = sg_make_shader(lit_tex_shader_desc(sg_query_backend())),
       .layout = {.buffers[0] = sshape_buffer_layout_desc(),
                  .buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE,
                  .buffers[2].step_func = SG_VERTEXSTEP_PER_INSTANCE,
@@ -349,14 +350,14 @@ void init(void) {
   //                               .wrap_v = SG_WRAP_CLAMP_TO_EDGE},
   //            "cube-image");
 
-  load_image(
-      &(image_request_t){.img_id = shape_img_id,
-                         .path = "sand.png",
-                         .buffer_ptr = state.shape_texture_buffer,
-                         .buffer_size = sizeof(state.shape_texture_buffer),
-                         .wrap_u = SG_WRAP_REPEAT,
-                         .wrap_v = SG_WRAP_REPEAT},
-      "shape-texture");
+  // load_image(
+  //     &(image_request_t){.img_id = shape_img_id,
+  //                        .path = "sand.png",
+  //                        .buffer_ptr = state.shape_texture_buffer,
+  //                        .buffer_size = sizeof(state.shape_texture_buffer),
+  //                        .wrap_u = SG_WRAP_REPEAT,
+  //                        .wrap_v = SG_WRAP_REPEAT},
+  //     "shape-texture");
 
   const char* arraytex_paths[ARRAYTEX_COUNT] = {
       "grass.png", "mud.png", "rock.png", "sand.png", "snow.png", "stone.png",
@@ -372,55 +373,59 @@ void init(void) {
       .fail_callback = fail_callback,
       .success_callback = arraytex_success_callback});
 
-  for (int i = 0; i < EV_SKYBOX_COUNT; i++) {
-    char path_right[48];
-    char path_left[48];
-    char path_front[48];
-    char path_back[48];
-    char path_up[48];
-    char path_down[48];
-    sprintf(path_right, "%s_rt.png", skybox_names[i]);
-    sprintf(path_left, "%s_lf.png", skybox_names[i]);
-    sprintf(path_front, "%s_ft.png", skybox_names[i]);
-    sprintf(path_back, "%s_bk.png", skybox_names[i]);
-    sprintf(path_up, "%s_up.png", skybox_names[i]);
-    sprintf(path_down, "%s_dn.png", skybox_names[i]);
-    path_right[47] = '\0';
-    path_left[47] = '\0';
-    path_front[47] = '\0';
-    path_back[47] = '\0';
-    path_up[47] = '\0';
-    path_down[47] = '\0';
-    state.sky_img[i] = sg_alloc_image();
-    load_cubemap(
-        &(cubemap_request_t){.img_id = state.sky_img[i],
-                             .path_right = path_right,
-                             .path_left = path_left,
-                             .path_up = path_up,
-                             .path_down = path_down,
-                             .path_front = path_front,
-                             .path_back = path_back,
-                             .buffer_ptr = state.ev_cubemap_buffer +
-                                           (EV_SKYBOX_BUFFER_OFFSET * i),
-                             .buffer_offset = 1024 * 1024,
-                             .fail_callback = fail_callback,
-                             .success_callback = cube_success_callback},
-        i);
-  }
+  // for (int i = 0; i < EV_SKYBOX_COUNT; i++) {
+  //   char path_right[48];
+  //   char path_left[48];
+  //   char path_front[48];
+  //   char path_back[48];
+  //   char path_up[48];
+  //   char path_down[48];
+  //   sprintf(path_right, "%s_rt.png", skybox_names[i]);
+  //   sprintf(path_left, "%s_lf.png", skybox_names[i]);
+  //   sprintf(path_front, "%s_ft.png", skybox_names[i]);
+  //   sprintf(path_back, "%s_bk.png", skybox_names[i]);
+  //   sprintf(path_up, "%s_up.png", skybox_names[i]);
+  //   sprintf(path_down, "%s_dn.png", skybox_names[i]);
+  //   path_right[47] = '\0';
+  //   path_left[47] = '\0';
+  //   path_front[47] = '\0';
+  //   path_back[47] = '\0';
+  //   path_up[47] = '\0';
+  //   path_down[47] = '\0';
+  //   state.sky_img[i] = sg_alloc_image();
+  //   load_cubemap(
+  //       &(cubemap_request_t){.img_id = state.sky_img[i],
+  //                            .path_right = path_right,
+  //                            .path_left = path_left,
+  //                            .path_up = path_up,
+  //                            .path_down = path_down,
+  //                            .path_front = path_front,
+  //                            .path_back = path_back,
+  //                            .buffer_ptr = state.ev_cubemap_buffer +
+  //                                          (EV_SKYBOX_BUFFER_OFFSET * i),
+  //                            .buffer_offset = 1024 * 1024,
+  //                            .fail_callback = fail_callback,
+  //                            .success_callback = cube_success_callback},
+  //       i);
+  // }
 
-  state.sky_img[EV_SKYBOX_COUNT] = sg_alloc_image();
-  load_cubemap(&(cubemap_request_t){.img_id = state.sky_img[EV_SKYBOX_COUNT],
-                                    .path_right = "right.jpg",
-                                    .path_left = "left.jpg",
-                                    .path_up = "up.jpg",
-                                    .path_down = "down.jpg",
-                                    .path_front = "front.jpg",
-                                    .path_back = "back.jpg",
-                                    .buffer_ptr = state.cubemap_buffer,
-                                    .buffer_offset = 1024 * 1024,
-                                    .fail_callback = fail_callback,
-                                    .success_callback = cube_success_callback},
-               EV_SKYBOX_COUNT);
+  // state.sky_img[0] = sg_alloc_image();
+  // load_cubemap(&(cubemap_request_t){.img_id = state.sky_img[0],
+  //                                   // .img_id =
+  //                                   state.sky_img[EV_SKYBOX_COUNT],
+  //                                   .path_right = "right.jpg",
+  //                                   .path_left = "left.jpg",
+  //                                   .path_up = "up.jpg",
+  //                                   .path_down = "down.jpg",
+  //                                   .path_front = "front.jpg",
+  //                                   .path_back = "back.jpg",
+  //                                   .buffer_ptr = state.cubemap_buffer,
+  //                                   .buffer_offset = 1024 * 1024,
+  //                                   .fail_callback = fail_callback,
+  //                                   .success_callback =
+  //                                   cube_success_callback},
+  //              0);
+  //  EV_SKYBOX_COUNT);
   state.initTime = stm_diff(stm_now(), initStartTime);
 }
 
@@ -495,33 +500,41 @@ void frame(void) {
   // &SG_RANGE(vs_params)); sg_draw(0, 36, 1);
 
   // DRAW SHAPES
-  textured_shape_vs_params_t shape_params;
+  lit_tex_vs_params_t vs_params;
+  lit_tex_fs_params_t fs_params;
   sg_apply_pipeline(state.shape_pip);
   sg_apply_bindings(&state.shape_bind);
-  shape_params.viewproj = HMM_MultiplyMat4(projection, view);
-  shape_params.model = HMM_Mat4d(1.0);
-  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_shape_vs_params,
-                    &SG_RANGE(shape_params));
+  vs_params.viewproj = HMM_MultiplyMat4(projection, view);
+  vs_params.model = HMM_Mat4d(1.0);
+  fs_params.ambientStrength = 0.1f;
+  fs_params.specularStrength = 0.5f;
+  fs_params.lightPos = HMM_Vec3(14.0f, 4.0f, 4.0f);
+  fs_params.lightColor = HMM_Vec3(0.7f, 0.6f, 0.8f);
+  fs_params.viewPos = camera_get_position(&state.cam);
+  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_lit_tex_vs_params,
+                    &SG_RANGE(vs_params));
+  sg_apply_uniforms(SG_SHADERSTAGE_FS, SLOT_lit_tex_fs_params,
+                    &SG_RANGE(fs_params));
   sg_draw(state.shape_elems.base_element, state.shape_elems.num_elements,
           NUM_CELLS);
 
   // DRAW SKYBOX
-  view.Elements[3][0] = 0.0f;
-  view.Elements[3][1] = 0.0f;
-  view.Elements[3][2] = 0.0f;
+  // view.Elements[3][0] = 0.0f;
+  // view.Elements[3][1] = 0.0f;
+  // view.Elements[3][2] = 0.0f;
 
-  skybox_vs_params_t skybox_params;
-  skybox_params.view = view;
-  skybox_params.projection = projection;
+  // skybox_vs_params_t skybox_params;
+  // skybox_params.view = view;
+  // skybox_params.projection = projection;
 
-  state.skybox_bind.fs_images[SLOT_skybox_texture] =
-      state.sky_img[state.selectedSkybox];
+  // state.skybox_bind.fs_images[SLOT_skybox_texture] =
+  //     state.sky_img[state.selectedSkybox];
 
-  sg_apply_pipeline(state.skybox_pip);
-  sg_apply_bindings(&state.skybox_bind);
-  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_skybox_vs_params,
-                    &SG_RANGE(skybox_params));
-  sg_draw(0, 36, 1);
+  // sg_apply_pipeline(state.skybox_pip);
+  // sg_apply_bindings(&state.skybox_bind);
+  // sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_skybox_vs_params,
+  //                   &SG_RANGE(skybox_params));
+  // sg_draw(0, 36, 1);
 
   // if (state.show_mem_ui) {
   sdtx_draw();
