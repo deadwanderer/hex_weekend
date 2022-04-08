@@ -90,27 +90,27 @@ layout(location=3) in vec4 color0;
 layout(location=4) in vec3 inst_pos;
 layout(location=5) in float texIndex;
 
-out vec4 color;
+// out vec4 color;
 //out vec3 out_normal;
-out vec2 out_texcoord;
+// out vec2 out_texcoord;
 out vec3 array_texcoord;
-out vec3 world_position;
+// out vec3 world_position;
 
 void main() {
     vec4 worldpos = (position+vec4(inst_pos, 1.0));
     gl_Position = viewproj * model * worldpos;
-    color = color0;    
+    // color = color0;    
     //out_normal = normal;
-    out_texcoord = texcoord;
+    // out_texcoord = texcoord;
     array_texcoord = vec3(texcoord, texIndex);
-    world_position = (model * position).xyz;
+    // world_position = (model * position).xyz;
 }
 @end
 
 @fs shape_fs
 in vec4 color;
 //in vec3 out_normal;
-//in vec2 out_texcoord;
+in vec2 out_texcoord;
 out vec4 frag_color;
 
 void main() {
@@ -122,11 +122,11 @@ void main() {
 @end
 
 @fs textured_shape_fs
-in vec4 color;
+// in vec4 color;
 //in vec3 out_normal;
-in vec2 out_texcoord;
+// in vec2 out_texcoord;
 in vec3 array_texcoord;
-in vec3 world_position;
+// in vec3 world_position;
 out vec4 frag_color;
 
 uniform sampler2D shape_texture;
@@ -134,10 +134,10 @@ uniform sampler2DArray shape_arraytex;
 
 void main() {
     //vec3 norm = normalize(out_normal);
-    //vec2 redo = out_texcoord * vec2(0.4, 0.4);
+    // vec2 redo = out_texcoord * vec2(0.4, 0.4);
     //frag_color = color * vec4(norm, 0.5) * vec4(redo, 1.0, 0.5);
     //frag_color = color;
-    frag_color = texture(shape_texture, (world_position * 0.05).xz);
+    // frag_color = texture(shape_texture, (world_position * 0.05).xz);
     frag_color = texture(shape_arraytex, array_texcoord);
 }
 @end

@@ -24,8 +24,8 @@
 #include "Camera.h"
 // #include "hex.h"
 
-#define NUM_CELLS_WIDE 10
-#define NUM_CELLS_LONG 10
+#define NUM_CELLS_WIDE 50
+#define NUM_CELLS_LONG 50
 #define NUM_CELLS (NUM_CELLS_WIDE * NUM_CELLS_LONG)
 
 static uint8_t favicon_buffer[32 * 32 * 4];
@@ -229,8 +229,8 @@ void init(void) {
   state.skybox_bind.fs_images[SLOT_skybox_texture] = skybox_img_id;
   // sg_image cube_img_id = sg_alloc_image();
   // state.cube_bind.fs_images[SLOT_cube_texture] = cube_img_id;
-  sg_image shape_img_id = sg_alloc_image();
-  state.shape_bind.fs_images[SLOT_shape_texture] = shape_img_id;
+  // sg_image shape_img_id = sg_alloc_image();
+  // state.shape_bind.fs_images[SLOT_shape_texture] = shape_img_id;
   sg_image arraytex_img_id = sg_alloc_image();
   state.shape_bind.fs_images[SLOT_shape_arraytex] = arraytex_img_id;
 
@@ -261,7 +261,7 @@ void init(void) {
       int iZ = abs((int)j % ARRAYTEX_COUNT);
       shape_tex_index[NUM_CELLS_WIDE * z + x] =
           (float)(rand() % ARRAYTEX_COUNT);
-      float y = (float)(rand() % (11) - 5) / 10.0f;
+      float y = ((float)(rand()) / (float)(RAND_MAX)) / 5.0f;  // 0.0f;
       shape_pos[NUM_CELLS_WIDE * z + x] = HMM_Vec3(
           (float)(i - NUM_CELLS_WIDE / 2), y, (float)(j - NUM_CELLS_LONG / 2));
     }
@@ -296,7 +296,7 @@ void init(void) {
   buf = sshape_build_cylinder(&buf, &(sshape_cylinder_t){
                                         .merge = true,
                                         .radius = 1.0f,
-                                        .height = 1.0f,
+                                        .height = 0.5f,
                                         .slices = 6,
                                         .stacks = 1,
                                         .random_colors = true,
@@ -341,14 +341,14 @@ void init(void) {
   //                               .wrap_v = SG_WRAP_CLAMP_TO_EDGE},
   //            "cube-image");
 
-  load_image(
-      &(image_request_t){.img_id = shape_img_id,
-                         .path = "sand.png",
-                         .buffer_ptr = state.shape_texture_buffer,
-                         .buffer_size = sizeof(state.shape_texture_buffer),
-                         .wrap_u = SG_WRAP_REPEAT,
-                         .wrap_v = SG_WRAP_REPEAT},
-      "shape-texture");
+  // load_image(
+  //     &(image_request_t){.img_id = shape_img_id,
+  //                        .path = "sand.png",
+  //                        .buffer_ptr = state.shape_texture_buffer,
+  //                        .buffer_size = sizeof(state.shape_texture_buffer),
+  //                        .wrap_u = SG_WRAP_REPEAT,
+  //                        .wrap_v = SG_WRAP_REPEAT},
+  //     "shape-texture");
 
   const char* arraytex_paths[ARRAYTEX_COUNT] = {
       "grass.png", "mud.png", "rock.png", "sand.png", "snow.png", "stone.png",
